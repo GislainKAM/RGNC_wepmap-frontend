@@ -1,6 +1,6 @@
 'use client'
 
-import React, { useEffect, useRef, useState } from 'react'
+import React, { useCallback, useEffect, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { Icon } from '@/components/ui/Icon'
 import { OrdreIcon } from '@/components/ui/OrdreIcon'
@@ -15,7 +15,7 @@ import {
   useDemandes, useApproveDemande, useRejectDemande,
   useImportBornes,
 } from '@/hooks/useAdmin'
-import { regionApi, departementApi, communeApi, importApi } from '@/lib/api'
+import { regionApi, departementApi, communeApi, importApi, pointApi } from '@/lib/api'
 import { useQuery } from '@tanstack/react-query'
 import { ROUTES } from '@/lib/constants'
 import type {
@@ -37,6 +37,14 @@ const STATUT_CLS: Record<StatutBorne, string> = {
   degrade: 'badge-warning',
   detruit: 'badge-danger',
   inconnu: '',
+}
+
+// Couleurs hex identiques à MapCanvas — la couleur encode le statut, la forme encode l'ordre
+const STATUT_COLORS: Record<StatutBorne, string> = {
+  actif:   '#1F5D3A',
+  degrade: '#D4A017',
+  detruit: '#B83434',
+  inconnu: '#9BA5AC',
 }
 
 const RESEAU_LABELS: Record<ReseauBorne, string> = {
@@ -167,7 +175,7 @@ function SectionDashboard({ onGoTo, onToast }: { onGoTo: (s: AdminSection) => vo
       </div>
 
       {/* Charts */}
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, marginBottom: 20 }}>
+      <div className="admin-charts-grid" style={{ display: 'grid', gap: 16, marginBottom: 20 }}>
         <div className="admin-card">
           <div className="admin-card-head"><h3>{t('admin.dash.chart.regions')}</h3></div>
           <div style={{ padding: '12px 14px' }}>
@@ -176,27 +184,29 @@ function SectionDashboard({ onGoTo, onToast }: { onGoTo: (s: AdminSection) => vo
         </div>
         <div className="admin-card">
           <div className="admin-card-head"><h3>{t('admin.dash.chart.ordres')}</h3></div>
-          <table className="admin-table">
-            <thead>
-              <tr>
-                <th>{t('admin.dash.chart.ordre_col')}</th>
-                <th>{t('admin.dash.chart.libelle')}</th>
-                <th>{t('admin.dash.chart.bornes')}</th>
-              </tr>
-            </thead>
-            <tbody>
-              {stLoading
-                ? <tr><td colSpan={3}><Spinner /></td></tr>
-                : (stats?.par_ordre ?? []).map((o) => (
-                  <tr key={o.ordre}>
-                    <td><span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}><OrdreIcon ordre={o.ordre} size={13} />{o.ordre}</span></td>
-                    <td style={{ color: 'var(--fg-2)' }}>{t(`admin.ordre.${o.ordre}` as any)}</td>
-                    <td style={{ fontFamily: 'var(--font-mono)', fontWeight: 600 }}>{o.nb.toLocaleString()}</td>
-                  </tr>
-                ))
-              }
-            </tbody>
-          </table>
+          <div style={{ overflowX: 'auto' }}>
+            <table className="admin-table" style={{ minWidth: 320 }}>
+              <thead>
+                <tr>
+                  <th>{t('admin.dash.chart.ordre_col')}</th>
+                  <th>{t('admin.dash.chart.libelle')}</th>
+                  <th>{t('admin.dash.chart.bornes')}</th>
+                </tr>
+              </thead>
+              <tbody>
+                {stLoading
+                  ? <tr><td colSpan={3}><Spinner /></td></tr>
+                  : (stats?.par_ordre ?? []).map((o) => (
+                    <tr key={o.ordre}>
+                      <td><span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}><OrdreIcon ordre={o.ordre} size={13} />{o.ordre}</span></td>
+                      <td style={{ color: 'var(--fg-2)' }}>{t(`admin.ordre.${o.ordre}` as any)}</td>
+                      <td style={{ fontFamily: 'var(--font-mono)', fontWeight: 600 }}>{o.nb.toLocaleString()}</td>
+                    </tr>
+                  ))
+                }
+              </tbody>
+            </table>
+          </div>
         </div>
       </div>
 
@@ -216,28 +226,30 @@ function SectionDashboard({ onGoTo, onToast }: { onGoTo: (s: AdminSection) => vo
         {sigLoading ? <Spinner /> : sigs.length === 0 ? (
           <div style={{ padding: '20px', textAlign: 'center', color: 'var(--fg-3)', fontSize: 13 }}>{t('admin.dash.sig.aucun')}</div>
         ) : (
-          <table className="admin-table">
-            <thead>
-              <tr>
-                <th>{t('admin.dash.col.id')}</th>
-                <th>{t('admin.dash.col.borne')}</th>
-                <th>{t('admin.dash.col.type')}</th>
-                <th>{t('admin.dash.col.date')}</th>
-                <th>{t('admin.dash.col.statut')}</th>
-              </tr>
-            </thead>
-            <tbody>
-              {sigs.slice(0, 8).map((s) => (
-                <tr key={s.id}>
-                  <td style={{ fontFamily: 'var(--font-mono)', fontSize: 10.5, color: 'var(--fg-3)' }}>#{s.id}</td>
-                  <td style={{ fontFamily: 'var(--font-mono)', fontSize: 11 }}>P-{s.point}</td>
-                  <td>{s.type_label || s.type_signalement}</td>
-                  <td style={{ color: 'var(--fg-3)' }}>{new Date(s.date_signalement).toLocaleDateString()}</td>
-                  <td><span className={`badge ${s.statut_traitement === 'resolu' ? 'badge-success' : s.statut_traitement === 'attente' ? 'badge-warning' : 'badge-info'}`}><span className="badge-dot" />{s.statut_traitement_label || s.statut_traitement}</span></td>
+          <div style={{ overflowX: 'auto' }}>
+            <table className="admin-table" style={{ minWidth: 480 }}>
+              <thead>
+                <tr>
+                  <th>{t('admin.dash.col.id')}</th>
+                  <th>{t('admin.dash.col.borne')}</th>
+                  <th>{t('admin.dash.col.type')}</th>
+                  <th>{t('admin.dash.col.date')}</th>
+                  <th>{t('admin.dash.col.statut')}</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody>
+                {sigs.slice(0, 8).map((s) => (
+                  <tr key={s.id}>
+                    <td style={{ fontFamily: 'var(--font-mono)', fontSize: 10.5, color: 'var(--fg-3)' }}>#{s.id}</td>
+                    <td style={{ fontFamily: 'var(--font-mono)', fontSize: 11 }}>P-{s.point}</td>
+                    <td>{s.type_label || s.type_signalement}</td>
+                    <td style={{ color: 'var(--fg-3)' }}>{new Date(s.date_signalement).toLocaleDateString()}</td>
+                    <td><span className={`badge ${s.statut_traitement === 'resolu' ? 'badge-success' : s.statut_traitement === 'attente' ? 'badge-warning' : 'badge-info'}`}><span className="badge-dot" />{s.statut_traitement_label || s.statut_traitement}</span></td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         )}
       </div>
     </div>
@@ -285,6 +297,31 @@ function BorneSlideOver({ editId, onClose, onToast }: {
     description_acces: '', description_borne: '',
   })
 
+  // ── Photo terrain ─────────────────────────────────────────────
+  const photoInputRef                     = useRef<HTMLInputElement>(null)
+  const [photoFile,     setPhotoFile]     = useState<File | null>(null)        // nouveau fichier sélectionné
+  const [photoPreview,  setPhotoPreview]  = useState<string | null>(null)      // blob URL prévisualisation
+  const [deletePhoto,   setDeletePhoto]   = useState(false)                    // marquer photo à supprimer
+  const MAX_PHOTO  = 5 * 1024 * 1024
+  const PHOTO_MIME = ['image/jpeg', 'image/png', 'image/webp']
+
+  const handlePhotoSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+    if (!PHOTO_MIME.includes(file.type)) { alert('Format non supporté (JPG, PNG ou WebP)'); return }
+    if (file.size > MAX_PHOTO) { alert('Fichier trop volumineux (max 5 Mo)'); return }
+    setPhotoFile(file)
+    setPhotoPreview(URL.createObjectURL(file))
+    setDeletePhoto(false)
+    if (photoInputRef.current) photoInputRef.current.value = ''
+  }
+
+  const handleRemovePhoto = () => {
+    setPhotoFile(null)
+    setPhotoPreview(null)
+    setDeletePhoto(true)
+  }
+
   useEffect(() => {
     if (detail) {
       setForm({
@@ -297,9 +334,9 @@ function BorneSlideOver({ editId, onClose, onToast }: {
         ordre:             detail.ordre,
         reseau:            detail.reseau,
         statut:            detail.statut,
-        region:            detail.region_nom,
-        departement:       detail.departement_nom,
-        commune:           detail.commune_nom,
+        region:            detail.region_nom      ?? '',
+        departement:       detail.departement_nom ?? '',
+        commune:           detail.commune_nom     ?? '',
         localite:          detail.localite,
         description_acces: detail.description_acces,
         description_borne: detail.description_borne,
@@ -332,13 +369,25 @@ function BorneSlideOver({ editId, onClose, onToast }: {
       if (c) (payload as any).commune = c.id
     }
     try {
+      let savedId = editId
       if (isNew) {
-        await createMut.mutateAsync(payload)
+        const created = await createMut.mutateAsync(payload)
+        savedId = (created as any).id ?? savedId
         onToast(`"${form.nom}" ${t('admin.toast.borne_creee')}.`, 'success')
       } else {
         await updateMut.mutateAsync({ id: editId!, data: payload })
         onToast(`"${form.nom}" — ${t('admin.toast.borne_modifiee')}.`, 'success')
       }
+
+      // ── Photo : upload ou suppression après la sauvegarde principale ──
+      if (savedId) {
+        if (photoFile) {
+          await pointApi.uploadPhoto(savedId, photoFile)
+        } else if (deletePhoto) {
+          await pointApi.deletePhoto(savedId)
+        }
+      }
+
       onClose()
     } catch (e: any) {
       onToast(e?.response?.data?.detail || t('admin.borne.err_save'), 'danger')
@@ -357,7 +406,7 @@ function BorneSlideOver({ editId, onClose, onToast }: {
   return (
     <div style={{ position: 'fixed', inset: 0, zIndex: 800, display: 'flex' }}>
       <div onClick={onClose} style={{ flex: 1, background: 'rgba(14,27,34,0.45)' }} />
-      <div style={{ width: 440, background: 'var(--bg-elevated)', display: 'flex', flexDirection: 'column', height: '100%', boxShadow: 'var(--shadow-lg)' }}>
+      <div className="admin-slideover" style={{ background: 'var(--bg-elevated)', display: 'flex', flexDirection: 'column', height: '100%', boxShadow: 'var(--shadow-lg)', width: 'min(440px, 100vw)' }}>
         <div style={{ padding: '14px 18px', borderBottom: '1px solid var(--border-subtle)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexShrink: 0 }}>
           <div>
             <div style={{ fontFamily: 'var(--font-display)', fontSize: 16, fontWeight: 600, color: 'var(--fg-1)' }}>
@@ -479,10 +528,88 @@ function BorneSlideOver({ editId, onClose, onToast }: {
               <label style={lbl}>{t('admin.borne.lbl.acces')}</label>
               <textarea style={{ ...fld, height: 64, resize: 'vertical', lineHeight: 1.5 }} value={form.description_acces} onChange={(e) => set('description_acces', e.target.value)} placeholder="Instructions pour atteindre la borne…" />
             </div>
-            <div>
+            <div style={{ marginBottom: 10 }}>
               <label style={lbl}>{t('admin.borne.lbl.description')}</label>
               <textarea style={{ ...fld, height: 64, resize: 'vertical', lineHeight: 1.5 }} value={form.description_borne} onChange={(e) => set('description_borne', e.target.value)} placeholder="État, matériau, marquage…" />
             </div>
+
+            {/* ── Photo terrain ── */}
+            <div style={sec}>Photo terrain</div>
+            <input
+              ref={photoInputRef}
+              type="file"
+              accept="image/jpeg,image/png,image/webp"
+              style={{ display: 'none' }}
+              onChange={handlePhotoSelect}
+            />
+
+            {/* Prévisualisation : nouveau fichier > photo existante > zone vide */}
+            {(photoPreview || (detail?.photo_url && !deletePhoto)) ? (
+              <div style={{ position: 'relative', marginBottom: 10 }}>
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img
+                  src={photoPreview ?? detail?.photo_url ?? ''}
+                  alt="Photo terrain"
+                  style={{
+                    width: '100%', aspectRatio: '3/2', objectFit: 'cover',
+                    borderRadius: 'var(--radius-sm)',
+                    border: '1px solid var(--border-subtle)',
+                    display: 'block',
+                  }}
+                />
+                {/* Badge "Nouveau" si fichier local sélectionné */}
+                {photoPreview && (
+                  <span style={{
+                    position: 'absolute', top: 6, left: 6,
+                    background: 'var(--rgnc-foret-700)', color: '#fff',
+                    fontSize: 10, fontWeight: 700, padding: '2px 7px',
+                    borderRadius: 'var(--radius-pill)',
+                  }}>Nouveau</span>
+                )}
+                <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
+                  <button type="button" onClick={() => photoInputRef.current?.click()} style={{
+                    flex: 1, padding: '6px 10px',
+                    border: '1px solid var(--border-subtle)', borderRadius: 'var(--radius-sm)',
+                    background: 'var(--bg-app)', color: 'var(--fg-2)',
+                    fontSize: 12, cursor: 'pointer', fontFamily: 'inherit',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
+                  }}>
+                    <Icon name="camera" size={12} /> Changer
+                  </button>
+                  <button type="button" onClick={handleRemovePhoto} style={{
+                    padding: '6px 10px',
+                    border: '1px solid var(--border-subtle)', borderRadius: 'var(--radius-sm)',
+                    background: 'none', color: 'var(--rgnc-danger)',
+                    fontSize: 12, cursor: 'pointer', fontFamily: 'inherit',
+                    display: 'flex', alignItems: 'center', gap: 5,
+                  }}>
+                    <Icon name="trash-2" size={12} /> Supprimer
+                  </button>
+                </div>
+              </div>
+            ) : (
+              /* Zone de dépôt / sélection */
+              <div
+                onClick={() => photoInputRef.current?.click()}
+                style={{
+                  border: '2px dashed var(--border-strong)',
+                  borderRadius: 'var(--radius-sm)',
+                  padding: '24px 16px',
+                  textAlign: 'center', cursor: 'pointer',
+                  color: 'var(--fg-3)', fontSize: 12,
+                  marginBottom: 10,
+                  transition: 'background 0.15s',
+                }}
+                onMouseEnter={(e) => (e.currentTarget.style.background = 'var(--bg-sunken)')}
+                onMouseLeave={(e) => (e.currentTarget.style.background = '')}
+              >
+                <Icon name="camera" size={22} style={{ display: 'block', margin: '0 auto 8px', color: 'var(--fg-4)' }} />
+                <div style={{ fontWeight: 500, color: 'var(--fg-2)', marginBottom: 3 }}>
+                  Ajouter une photo terrain
+                </div>
+                <div>JPG, PNG ou WebP — max 5 Mo</div>
+              </div>
+            )}
 
             {(createMut.error || updateMut.error) && (
               <div style={{ marginTop: 12 }}>
@@ -579,8 +706,8 @@ function SectionBornes({ onToast }: { onToast: (m: string, t?: ToastType) => voi
       {error && <div style={{ marginBottom: 12 }}><ApiError error={error} label={t('admin.bornes.erreur')} /></div>}
 
       <div className="admin-card">
-        <div style={{ overflowX: 'auto' }}>
-          <table className="admin-table">
+        <div style={{ overflowX: 'auto', WebkitOverflowScrolling: 'touch' }}>
+          <table className="admin-table" style={{ minWidth: 700 }}>
             <thead>
               <tr>
                 <th style={{ width: 36 }}>
@@ -591,8 +718,10 @@ function SectionBornes({ onToast }: { onToast: (m: string, t?: ToastType) => voi
                   t('admin.bornes.col.matricule'), t('admin.bornes.col.nom'),
                   t('admin.bornes.col.region'), t('admin.bornes.col.commune'),
                   t('admin.bornes.col.localite'), t('admin.bornes.col.ordre'),
-                  t('admin.bornes.col.statut'), '',
+                  t('admin.bornes.col.statut'),
                 ].map((h) => <th key={h}>{h}</th>)}
+                {/* Colonne action — sticky à droite */}
+                <th className="admin-col-sticky-right" style={{ width: 44 }}></th>
               </tr>
             </thead>
             <tbody>
@@ -609,8 +738,9 @@ function SectionBornes({ onToast }: { onToast: (m: string, t?: ToastType) => voi
                   <td style={{ color: 'var(--fg-3)', fontStyle: 'italic', fontSize: 12 }}>{b.localite}</td>
                   <td>
                     <div style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}>
-                      <OrdreIcon ordre={b.ordre} size={12} />
-                      <span style={{ fontSize: 11, background: 'var(--rgnc-foret-50)', color: 'var(--rgnc-foret-700)', padding: '1px 6px', borderRadius: 'var(--radius-xs)' }}>
+                      {/* Forme = ordre, couleur = statut — cohérent avec la carte */}
+                      <OrdreIcon ordre={b.ordre} size={14} color={STATUT_COLORS[b.statut] ?? '#9BA5AC'} />
+                      <span style={{ fontSize: 11, color: 'var(--fg-2)' }}>
                         {t(`admin.ordre.${b.ordre}` as any)}
                       </span>
                     </div>
@@ -620,8 +750,13 @@ function SectionBornes({ onToast }: { onToast: (m: string, t?: ToastType) => voi
                       <span className="badge-dot" />{t(`admin.statut.${b.statut}` as any)}
                     </span>
                   </td>
-                  <td onClick={(e) => e.stopPropagation()}>
-                    <button className="btn btn-ghost btn-sm" style={{ padding: '4px 8px' }} onClick={() => setEditId(b.id)}>
+                  <td className="admin-col-sticky-right" onClick={(e) => e.stopPropagation()}>
+                    <button
+                      className="btn btn-ghost btn-sm"
+                      style={{ padding: '4px 8px' }}
+                      onClick={() => setEditId(b.id)}
+                      title={t('admin.borne.modifier')}
+                    >
                       <Icon name="pencil" size={13} />
                     </button>
                   </td>
@@ -747,7 +882,8 @@ function SectionSignalements({ onToast }: { onToast: (m: string, t?: ToastType) 
       </div>
 
       {isLoading ? <Spinner /> : (
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 14, alignItems: 'start' }}>
+        <div className="admin-kanban-wrap" style={{ overflowX: 'auto', paddingBottom: 8 }}>
+        <div className="admin-kanban" style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 14, alignItems: 'start', minWidth: 720 }}>
           {SIG_COLS.map((col) => {
             const cards = sigs.filter((s) => s.statut_traitement === col.id)
             return (
@@ -761,6 +897,7 @@ function SectionSignalements({ onToast }: { onToast: (m: string, t?: ToastType) 
               </div>
             )
           })}
+        </div>
         </div>
       )}
     </div>
@@ -837,13 +974,14 @@ function SectionImport({ onToast }: { onToast: (m: string, t?: ToastType) => voi
 
       {/* Étape 1 — sélection */}
       {(step === 'idle' && !file) && (
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 280px', gap: 16 }}>
+        <div className="admin-import-grid" style={{ display: 'grid', gap: 16 }}>
           <div
             onDragOver={(e) => { e.preventDefault(); setDragging(true) }}
             onDragLeave={() => setDragging(false)}
             onDrop={(e) => { e.preventDefault(); setDragging(false); pickFile(e.dataTransfer.files[0]) }}
             onClick={() => fileRef.current?.click()}
-            style={{ border: `2px dashed ${dragging ? 'var(--rgnc-foret-700)' : 'var(--border-subtle)'}`, borderRadius: 'var(--radius-md)', background: dragging ? 'var(--rgnc-foret-50)' : 'var(--bg-surface)', padding: '64px 24px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 16, cursor: 'pointer', transition: 'all 150ms' }}>
+            className="admin-dropzone"
+            style={{ border: `2px dashed ${dragging ? 'var(--rgnc-foret-700)' : 'var(--border-subtle)'}`, borderRadius: 'var(--radius-md)', background: dragging ? 'var(--rgnc-foret-50)' : 'var(--bg-surface)', padding: '48px 24px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 16, cursor: 'pointer', transition: 'all 150ms' }}>
             <input ref={fileRef} type="file" accept=".csv,.json,.geojson,.pdf" style={{ display: 'none' }} onChange={(e) => pickFile(e.target.files?.[0])} />
             <div style={{ width: 64, height: 64, borderRadius: 'var(--radius-md)', border: '2px dashed var(--border-subtle)', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'var(--bg-elevated)' }}>
               <Icon name="arrow-right" size={28} color="var(--fg-3)" style={{ transform: 'rotate(-90deg)' }} />
@@ -1149,45 +1287,47 @@ function SectionAgents({ onToast }: { onToast: (m: string, t?: ToastType) => voi
         {users.length === 0 ? (
           <div style={{ padding: '24px', textAlign: 'center', color: 'var(--fg-3)', fontSize: 13 }}>{t('admin.agents.aucun')}</div>
         ) : (
-          <table className="admin-table">
-            <thead>
-              <tr>
-                {[
-                  t('admin.agents.col.nom'), t('admin.agents.col.email'),
-                  t('admin.agents.col.org'), t('admin.agents.col.region'),
-                  t('admin.agents.col.statut'), t('admin.agents.col.inscription'), '',
-                ].map((h) => <th key={h}>{h}</th>)}
-              </tr>
-            </thead>
-            <tbody>
-              {users.map((u) => (
-                <tr key={u.id}>
-                  <td style={{ fontWeight: 500 }}>{u.nom_complet}</td>
-                  <td style={{ fontFamily: 'var(--font-mono)', fontSize: 11.5, color: 'var(--fg-2)' }}>{u.email}</td>
-                  <td style={{ color: 'var(--fg-2)', fontSize: 12 }}>{u.organisation}</td>
-                  <td style={{ color: 'var(--fg-2)', fontSize: 12 }}>{u.region_nom}</td>
-                  <td>
-                    {u.est_verifie
-                      ? <span className="badge badge-success"><span className="badge-dot" />{t('admin.agents.verifie')}</span>
-                      : <span className="badge badge-warning"><span className="badge-dot" />{t('admin.agents.en_attente')}</span>}
-                  </td>
-                  <td style={{ fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--fg-3)' }}>
-                    {new Date(u.date_inscription).toLocaleDateString()}
-                  </td>
-                  <td>
-                    <button
-                      className="btn btn-ghost btn-sm"
-                      onClick={() => toggleVerif(u)}
-                      disabled={updateMut.isPending}
-                      title={u.est_verifie ? t('admin.requests.rejeter') : t('admin.agents.verifie')}
-                    >
-                      <Icon name={u.est_verifie ? 'x' : 'check'} size={13} />
-                    </button>
-                  </td>
+          <div style={{ overflowX: 'auto' }}>
+            <table className="admin-table" style={{ minWidth: 600 }}>
+              <thead>
+                <tr>
+                  {[
+                    t('admin.agents.col.nom'), t('admin.agents.col.email'),
+                    t('admin.agents.col.org'), t('admin.agents.col.region'),
+                    t('admin.agents.col.statut'), t('admin.agents.col.inscription'), '',
+                  ].map((h) => <th key={h}>{h}</th>)}
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody>
+                {users.map((u) => (
+                  <tr key={u.id}>
+                    <td style={{ fontWeight: 500 }}>{u.nom_complet}</td>
+                    <td style={{ fontFamily: 'var(--font-mono)', fontSize: 11.5, color: 'var(--fg-2)' }}>{u.email}</td>
+                    <td style={{ color: 'var(--fg-2)', fontSize: 12 }}>{u.organisation}</td>
+                    <td style={{ color: 'var(--fg-2)', fontSize: 12 }}>{u.region_nom}</td>
+                    <td>
+                      {u.est_verifie
+                        ? <span className="badge badge-success"><span className="badge-dot" />{t('admin.agents.verifie')}</span>
+                        : <span className="badge badge-warning"><span className="badge-dot" />{t('admin.agents.en_attente')}</span>}
+                    </td>
+                    <td style={{ fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--fg-3)' }}>
+                      {new Date(u.date_inscription).toLocaleDateString()}
+                    </td>
+                    <td>
+                      <button
+                        className="btn btn-ghost btn-sm"
+                        onClick={() => toggleVerif(u)}
+                        disabled={updateMut.isPending}
+                        title={u.est_verifie ? t('admin.requests.rejeter') : t('admin.agents.verifie')}
+                      >
+                        <Icon name={u.est_verifie ? 'x' : 'check'} size={13} />
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         )}
       </div>
       {showInvite && <InviteModal onClose={() => setShowInvite(false)} onToast={onToast} />}
@@ -1205,6 +1345,8 @@ export default function AdminPage() {
   const isLoading = useAuth((s) => s.isLoading)
   const logout    = useAuth((s) => s.logout)
   const [section, setSection] = useState<AdminSection>('dashboard')
+  const [sidebarOpen, setSidebarOpen] = useState(false)
+  const closeSidebar = useCallback(() => setSidebarOpen(false), [])
   const { toasts, push: toast } = useToast()
 
   // Navigation (computed from t so it updates with language)
@@ -1249,10 +1391,15 @@ export default function AdminPage() {
   const handleLogout = () => { logout(); router.push(ROUTES.LOGIN) }
 
   return (
-    <div style={{ display: 'flex', height: '100vh', overflow: 'hidden', background: 'var(--bg-app)', fontFamily: 'var(--font-body)' }}>
+    <div className="admin-layout" style={{ display: 'flex', height: '100vh', overflow: 'hidden', background: 'var(--bg-app)', fontFamily: 'var(--font-body)' }}>
+
+      {/* ── Backdrop mobile sidebar ── */}
+      {sidebarOpen && (
+        <div className="admin-sidebar-backdrop" onClick={closeSidebar} aria-hidden="true" />
+      )}
 
       {/* ── Sidebar ── */}
-      <aside style={{ width: 232, background: 'var(--rgnc-foret-900)', borderRight: '1px solid rgba(255,255,255,0.06)', display: 'flex', flexDirection: 'column', flexShrink: 0 }}>
+      <aside className={`admin-sidebar${sidebarOpen ? ' open' : ''}`} style={{ width: 232, background: 'var(--rgnc-foret-900)', borderRight: '1px solid rgba(255,255,255,0.06)', display: 'flex', flexDirection: 'column', flexShrink: 0 }}>
         <div onClick={() => router.push(ROUTES.MAP)} style={{ padding: '16px 14px', borderBottom: '1px solid rgba(255,255,255,0.08)', display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer' }} title={t('admin.sidebar.retour')}>
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img src="/assets/logo/rgnc-webmap-wordmark.svg" alt="RGNC WebMap" style={{ height: 22, filter: 'brightness(0) invert(1) opacity(0.88)' }} />
@@ -1263,7 +1410,7 @@ export default function AdminPage() {
           {NAV.map(({ key, label, icon }) => {
             const badge = key === 'signalements' ? sigBadge : key === 'requests' ? demandeBadge : 0
             return (
-              <button key={key} onClick={() => setSection(key)} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '9px 10px', borderRadius: 'var(--radius-sm)', border: 'none', cursor: 'pointer', fontSize: 13, fontFamily: 'var(--font-body)', fontWeight: 500, background: section === key ? 'rgba(255,255,255,0.12)' : 'transparent', color: section === key ? '#fff' : 'rgba(255,255,255,0.6)', textAlign: 'left', width: '100%', transition: 'all 120ms' }}>
+              <button key={key} onClick={() => { setSection(key); closeSidebar() }} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '9px 10px', borderRadius: 'var(--radius-sm)', border: 'none', cursor: 'pointer', fontSize: 13, fontFamily: 'var(--font-body)', fontWeight: 500, background: section === key ? 'rgba(255,255,255,0.12)' : 'transparent', color: section === key ? '#fff' : 'rgba(255,255,255,0.6)', textAlign: 'left', width: '100%', transition: 'all 120ms' }}>
                 <Icon name={icon as any} size={16} color={section === key ? '#fff' : 'rgba(255,255,255,0.5)'} />
                 <span style={{ flex: 1 }}>{label}</span>
                 {badge > 0 && (
@@ -1285,18 +1432,27 @@ export default function AdminPage() {
       </aside>
 
       {/* ── Main ── */}
-      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden', minWidth: 0 }}>
+      <div className="admin-main-content" style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden', minWidth: 0 }}>
 
         {/* Topbar */}
-        <div style={{ height: 52, background: 'var(--bg-elevated)', borderBottom: '1px solid var(--border-subtle)', display: 'flex', alignItems: 'center', padding: '0 24px', gap: 12, flexShrink: 0 }}>
-          <h1 style={{ fontFamily: 'var(--font-display)', fontSize: 18, fontWeight: 600, color: 'var(--fg-1)', margin: 0 }}>{TITLES[section]}</h1>
-          <span style={{ color: 'var(--fg-4)' }}>·</span>
-          <span style={{ fontSize: 13, color: 'var(--fg-3)' }}>{t('admin.topbar.subtitle')}</span>
-          <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 10 }}>
-            <span style={{ fontSize: 11, color: 'var(--fg-3)', fontFamily: 'var(--font-mono)' }}>
+        <div className="admin-topbar" style={{ height: 52, background: 'var(--bg-elevated)', borderBottom: '1px solid var(--border-subtle)', display: 'flex', alignItems: 'center', padding: '0 16px', gap: 10, flexShrink: 0 }}>
+          {/* Hamburger — visible uniquement sur mobile via CSS */}
+          <button
+            className="admin-hamburger"
+            onClick={() => setSidebarOpen(true)}
+            aria-label="Ouvrir le menu"
+            style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--fg-2)', display: 'none', padding: 6, borderRadius: 'var(--radius-sm)', flexShrink: 0 }}
+          >
+            <Icon name="list" size={20} />
+          </button>
+          <h1 style={{ fontFamily: 'var(--font-display)', fontSize: 18, fontWeight: 600, color: 'var(--fg-1)', margin: 0, whiteSpace: 'nowrap' }}>{TITLES[section]}</h1>
+          <span className="admin-topbar-sub" style={{ color: 'var(--fg-4)' }}>·</span>
+          <span className="admin-topbar-sub" style={{ fontSize: 13, color: 'var(--fg-3)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{t('admin.topbar.subtitle')}</span>
+          <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 10, flexShrink: 0 }}>
+            <span className="admin-topbar-date" style={{ fontSize: 11, color: 'var(--fg-3)', fontFamily: 'var(--font-mono)' }}>
               {new Date().toLocaleDateString()}
             </span>
-            <div style={{ width: 32, height: 32, borderRadius: '50%', background: 'var(--rgnc-foret-700)', color: '#fff', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontSize: 11, fontWeight: 600 }}>
+            <div style={{ width: 32, height: 32, borderRadius: '50%', background: 'var(--rgnc-foret-700)', color: '#fff', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontSize: 11, fontWeight: 600, flexShrink: 0 }}>
               {(user?.nom_complet || user?.username || 'AD').split(' ').map((w) => w[0]).join('').toUpperCase().slice(0, 2)}
             </div>
           </div>

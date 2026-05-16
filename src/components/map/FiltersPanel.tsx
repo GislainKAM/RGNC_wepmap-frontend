@@ -1,11 +1,15 @@
 'use client'
 
 import React from 'react'
+import { useQuery } from '@tanstack/react-query'
 import { Icon } from '@/components/ui/Icon'
 import { OrdreIcon } from '@/components/ui/OrdreIcon'
 import { useLanguage } from '@/hooks/useLanguage'
+import { departementApi, communeApi } from '@/lib/api'
 import type {
-  FiltresCarteState, Region, StatutBorne, OrdreBorne, ReseauBorne, StatsRGNC,
+  FiltresCarteState, Region, Departement, Commune,
+  StatutBorne, OrdreBorne, ReseauBorne, StatsRGNC,
+  GeoJSONFeatureCollection,
 } from '@/lib/types'
 
 // ── Types ────────────────────────────────────────────────────────
@@ -14,9 +18,11 @@ interface FiltersPanelProps {
   filters:         FiltresCarteState
   onFiltersChange: (f: FiltresCarteState) => void
   collapsed:       boolean
+  onClose?:        () => void   // ferme le drawer sur mobile (tap backdrop ou bouton X)
   regions:         Region[]
   stats?:          StatsRGNC | null
-  total?:          number          // nb de points visibles sur la carte
+  geojson?:        GeoJSONFeatureCollection | null   // points actuellement visibles sur la carte
+  total?:          number                            // nb de points visibles
 }
 
 // Couleur neutre pour les icônes d'ordre dans les filtres.
@@ -47,6 +53,46 @@ const RESEAUX: { value: ReseauBorne; label: string }[] = [
 ]
 
 // ── Sous-composants ──────────────────────────────────────────────
+
+// ── Select stylé (factorisation) ────────────────────────────────
+interface SelectFilterProps {
+  value:       string | number
+  onChange:    (e: React.ChangeEvent<HTMLSelectElement>) => void
+  placeholder: string
+  disabled:    boolean
+  children:    React.ReactNode
+}
+
+function SelectFilter({ value, onChange, placeholder, disabled, children }: SelectFilterProps) {
+  return (
+    <select
+      value={value}
+      onChange={onChange}
+      disabled={disabled}
+      style={{
+        width:        '100%',
+        fontFamily:   'var(--font-body)',
+        fontSize:     'var(--fs-sm)',
+        padding:      '7px 10px',
+        background:   disabled ? 'var(--bg-muted, var(--bg-sunken))' : 'var(--bg-sunken)',
+        border:       '1px solid var(--border-subtle)',
+        borderRadius: 'var(--radius-xs)',
+        color:        disabled ? 'var(--fg-3)' : 'var(--fg-1)',
+        outline:      'none',
+        cursor:       disabled ? 'not-allowed' : 'pointer',
+        opacity:      disabled ? 0.6 : 1,
+        appearance:   'none',
+        backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%235A6770' stroke-width='2'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E")`,
+        backgroundRepeat:   'no-repeat',
+        backgroundPosition: 'right 10px center',
+        paddingRight:       32,
+      }}
+    >
+      <option value="">{placeholder}</option>
+      {children}
+    </select>
+  )
+}
 
 function CheckBox({ checked }: { checked: boolean }) {
   return (
@@ -92,7 +138,7 @@ function FilterRow({ checked, onToggle, label, sublabel, count, dotColor, icon }
 // ── Composant principal ──────────────────────────────────────────
 
 export function FiltersPanel({
-  filters, onFiltersChange, collapsed, regions, stats, total,
+  filters, onFiltersChange, collapsed, onClose, regions, stats, geojson, total,
 }: FiltersPanelProps) {
 
   const { t, lang } = useLanguage()
@@ -109,6 +155,23 @@ export function FiltersPanel({
     label:    t(`filters.ordre.${value}.label` as any),
     sublabel: t(`filters.ordre.${value}.sub`   as any),
   }))
+
+  // ── Données cascadantes Région → Département → Commune ──────
+  // Les départements se chargent dès qu'une région est sélectionnée
+  // (ou la liste complète si aucune région n'est filtrée)
+  const { data: departements = [], isFetching: deptLoading } = useQuery<Departement[]>({
+    queryKey: ['departements', filters.regionId],
+    queryFn:  () => departementApi.list(filters.regionId ?? undefined),
+    staleTime: 60 * 60 * 1000,
+  })
+
+  // Les communes se chargent uniquement si un département est sélectionné
+  const { data: communes = [], isFetching: communeLoading } = useQuery<Commune[]>({
+    queryKey: ['communes', filters.departementId],
+    queryFn:  () => communeApi.list(filters.departementId ?? undefined),
+    enabled:  filters.departementId != null,
+    staleTime: 60 * 60 * 1000,
+  })
 
   // ── Handlers ──────────────────────────────────────────────────
 
@@ -133,7 +196,19 @@ export function FiltersPanel({
 
   const handleRegion = (e: React.ChangeEvent<HTMLSelectElement>) => {
     const val = e.target.value ? Number(e.target.value) : null
-    onFiltersChange({ ...filters, regionId: val })
+    // Réinitialise département ET commune pour maintenir la cohérence hiérarchique
+    onFiltersChange({ ...filters, regionId: val, departementId: null, communeId: null })
+  }
+
+  const handleDept = (e: React.ChangeEvent<HTMLSelectElement>) => {
+    const val = e.target.value ? Number(e.target.value) : null
+    // Réinitialise commune si on change de département
+    onFiltersChange({ ...filters, departementId: val, communeId: null })
+  }
+
+  const handleCommune = (e: React.ChangeEvent<HTMLSelectElement>) => {
+    const val = e.target.value ? Number(e.target.value) : null
+    onFiltersChange({ ...filters, communeId: val })
   }
 
   const reset = () => {
@@ -148,21 +223,35 @@ export function FiltersPanel({
     })
   }
 
-  // ── Compteurs depuis les stats backend ────────────────────────
+  // ── Compteurs : points visibles sur la carte (réactifs aux filtres) ──────────
+  // Si geojson disponible → compteurs en temps réel depuis les features affichées
+  // Sinon → fallback sur les stats globales du backend
 
-  const getStatutCount = (s: StatutBorne): number | undefined =>
-    stats?.par_statut.find((x) => x.statut === s)?.nb
+  const visibleFeatures = geojson?.features ?? []
 
-  const getOrdreCount = (o: OrdreBorne): number | undefined =>
-    stats?.par_ordre.find((x) => x.ordre === o)?.nb
+  const getStatutCount = (s: StatutBorne): number | undefined => {
+    if (visibleFeatures.length > 0) {
+      return visibleFeatures.filter((f) => f.properties?.statut === s).length
+    }
+    return stats?.par_statut.find((x) => x.statut === s)?.nb
+  }
+
+  const getOrdreCount = (o: OrdreBorne): number | undefined => {
+    if (visibleFeatures.length > 0) {
+      return visibleFeatures.filter((f) => f.properties?.ordre === o).length
+    }
+    return stats?.par_ordre.find((x) => x.ordre === o)?.nb
+  }
 
   // ── Badge header ─────────────────────────────────────────────
 
   const activeCount =
     filters.statuts.length +
     filters.ordres.length +
-    (filters.regionId ? 1 : 0) +
-    (filters.reseau   ? 1 : 0)
+    (filters.regionId      ? 1 : 0) +
+    (filters.departementId ? 1 : 0) +
+    (filters.communeId     ? 1 : 0) +
+    (filters.reseau        ? 1 : 0)
 
   const headerBadge = activeCount > 0
     ? `${activeCount} ${activeCount > 1 ? t('filters.actifs_pl') : t('filters.actifs')}`
@@ -173,7 +262,17 @@ export function FiltersPanel({
   // ── Rendu ────────────────────────────────────────────────────
 
   return (
-    <aside className={`filters-panel${collapsed ? ' collapsed' : ''}`} aria-label="Filtres">
+    <>
+      {/* ── Backdrop mobile (tapez pour fermer) ── */}
+      {!collapsed && (
+        <div
+          className="filters-backdrop"
+          onClick={onClose}
+          aria-hidden="true"
+        />
+      )}
+
+      <aside className={`filters-panel${collapsed ? ' collapsed' : ''}`} aria-label="Filtres">
 
       {/* ── En-tête ── */}
       <div className="filters-head">
@@ -181,6 +280,14 @@ export function FiltersPanel({
         {headerBadge && (
           <span className="filters-count">{headerBadge}</span>
         )}
+        {/* Bouton fermeture — visible seulement sur mobile via CSS */}
+        <button
+          className="filters-close-btn"
+          onClick={onClose}
+          aria-label="Fermer les filtres"
+        >
+          <Icon name="x" size={16} />
+        </button>
       </div>
 
       {/* ── Corps ── */}
@@ -219,35 +326,75 @@ export function FiltersPanel({
           ))}
         </div>
 
-        {/* ── Région ── */}
+        {/* ── Localisation administrative : Région → Département → Commune ── */}
         <div className="filter-group">
           <p className="filter-group-label">{t('filters.region.title')}</p>
-          <select
+          <SelectFilter
             value={filters.regionId ?? ''}
             onChange={handleRegion}
-            style={{
-              width:        '100%',
-              fontFamily:   'var(--font-body)',
-              fontSize:     'var(--fs-sm)',
-              padding:      '7px 10px',
-              background:   'var(--bg-sunken)',
-              border:       '1px solid var(--border-subtle)',
-              borderRadius: 'var(--radius-xs)',
-              color:        'var(--fg-1)',
-              outline:      'none',
-              cursor:       'pointer',
-              appearance:   'none',
-              backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%235A6770' stroke-width='2'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E")`,
-              backgroundRepeat:   'no-repeat',
-              backgroundPosition: 'right 10px center',
-              paddingRight:       32,
-            }}
+            placeholder={t('filters.region.all')}
+            disabled={false}
           >
-            <option value="">{t('filters.region.all')}</option>
             {(Array.isArray(regions) ? regions : []).map((r) => (
               <option key={r.id} value={r.id}>{r.nom}</option>
             ))}
-          </select>
+          </SelectFilter>
+        </div>
+
+        <div className="filter-group">
+          <p className="filter-group-label" style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+            {t('filters.dept.title')}
+            {deptLoading && <span className="filter-spinner" />}
+          </p>
+          <SelectFilter
+            value={filters.departementId ?? ''}
+            onChange={handleDept}
+            placeholder={departements.length === 0 && !deptLoading
+              ? t('filters.dept.ph')
+              : t('filters.dept.all')}
+            disabled={false}
+          >
+            {departements.map((d) => (
+              <option key={d.id} value={d.id}>{d.nom}</option>
+            ))}
+          </SelectFilter>
+          {filters.departementId && (
+            <button
+              className="filter-clear-link"
+              onClick={() => onFiltersChange({ ...filters, departementId: null, communeId: null })}
+            >
+              <Icon name="x" size={10} />
+              {lang === 'fr' ? 'Effacer' : 'Clear'}
+            </button>
+          )}
+        </div>
+
+        <div className="filter-group">
+          <p className="filter-group-label" style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+            {t('filters.commune.title')}
+            {communeLoading && <span className="filter-spinner" />}
+          </p>
+          <SelectFilter
+            value={filters.communeId ?? ''}
+            onChange={handleCommune}
+            placeholder={filters.departementId == null
+              ? t('filters.commune.ph')
+              : t('filters.commune.all')}
+            disabled={filters.departementId == null}
+          >
+            {communes.map((c) => (
+              <option key={c.id} value={c.id}>{c.nom}</option>
+            ))}
+          </SelectFilter>
+          {filters.communeId && (
+            <button
+              className="filter-clear-link"
+              onClick={() => onFiltersChange({ ...filters, communeId: null })}
+            >
+              <Icon name="x" size={10} />
+              {lang === 'fr' ? 'Effacer' : 'Clear'}
+            </button>
+          )}
         </div>
 
         {/* ── Réseau / Campagne ── */}
@@ -276,12 +423,16 @@ export function FiltersPanel({
           <Icon name="x" size={12} />
           {t('filters.reset')}
         </button>
-        <button className="btn btn-primary btn-sm" style={{ marginLeft: 'auto' }}>
-          <Icon name="filter" size={12} />
-          {t('filters.apply')}
-        </button>
+        {/* Les filtres sont réactifs — pas besoin de bouton "Appliquer" */}
+        {activeCount > 0 && (
+          <span style={{ marginLeft: 'auto', fontSize: 11, color: 'var(--rgnc-foret-700)', fontWeight: 500 }}>
+            <Icon name="check" size={11} style={{ display: 'inline', verticalAlign: 'middle', marginRight: 3 }} />
+            {t('filters.actifs_pl') ? `${activeCount} ${t('filters.actifs_pl')}` : `${activeCount} filtre(s) actif(s)`}
+          </span>
+        )}
       </div>
 
     </aside>
+    </>
   )
 }

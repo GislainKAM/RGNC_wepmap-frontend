@@ -92,7 +92,7 @@ export interface PointGeodesiqueDetail {
   // Description
   description_acces:  string
   description_borne:  string
-  photo:              string | null    // URL
+  photo_url:          string | null    // URL absolue (jamais chemin disque brut)
   // Calculés
   a_fiche_pdf:        boolean
   nb_telechargements: number
@@ -102,15 +102,15 @@ export interface PointGeodesiqueDetail {
 }
 
 // ─── Fiche Signalétique ──────────────────────────────────────────
+// Note : fichier_pdf et url_pdf sont intentionnellement absents.
+// Le téléchargement se fait uniquement via GET /api/points/{id}/telecharger/
 export interface FicheSignaletique {
-  id:             number
-  point:          number
+  id:              number
+  point:           number
   point_matricule: string
-  fichier_pdf:    string
-  url_pdf:        string | null
-  taille_ko:      number
-  version:        number
-  date_upload:    string
+  taille_ko:       number
+  version:         number
+  date_upload:     string
 }
 
 // ─── Historique Statut ───────────────────────────────────────────
@@ -187,6 +187,7 @@ export interface ProfilUtilisateur {
   est_verifie:      boolean
   peut_telecharger: boolean
   date_inscription: string
+  photo_url:        string | null    // URL absolue de la photo de profil (null si aucune)
 }
 
 // ═══════════════════════════════════════════════════════════════

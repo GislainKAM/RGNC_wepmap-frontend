@@ -7,7 +7,7 @@ import axios, { AxiosInstance, AxiosError } from 'axios'
 import { API_URL, JWT_ACCESS_KEY, JWT_REFRESH_KEY } from './constants'
 import type {
   Region, Departement, Commune,
-  PointGeodesiqueDetail, FicheSignaletique,
+  PointGeodesiqueLight, PointGeodesiqueDetail, FicheSignaletique,
   HistoriqueStatut, Signalement, ProfilUtilisateur, StatsRGNC,
   GeoJSONFeatureCollection, GeoJSONFeatureCollectionPaginated,
   PaginatedResponse, DemandeAcces, ImportResult,
@@ -129,13 +129,30 @@ export const pointApi = {
       })
       .then(r => r.data),
 
-  /** Liste paginée pour la sidebar (GeoJSON FeatureCollection + count/next/previous) */
+  /**
+   * Liste paginée — retourne { count, results: [...objets plats] }
+   * (transforme le GeoJSON FeatureCollection du backend en réponse standard
+   *  afin que la table admin puisse lire data.results directement)
+   */
   list: (filtres?: Partial<FiltresCarteState>, page = 1) =>
     apiClient
       .get<GeoJSONFeatureCollectionPaginated>('/points/', {
-        params: { ...buildFiltresParams(filtres ?? {}), page, page_size: 20 },
+        params: { ...buildFiltresParams(filtres ?? {}), page, page_size: 25 },
       })
-      .then(r => r.data),
+      .then(r => {
+        const d = r.data
+        // Extraire les propriétés de chaque Feature GeoJSON → objet plat
+        const results: PointGeodesiqueLight[] = (d.features ?? []).map((f: any) => ({
+          id: f.id ?? f.properties?.id,
+          ...f.properties,
+        }))
+        return {
+          count:    d.count    ?? 0,
+          next:     d.next     ?? null,
+          previous: d.previous ?? null,
+          results,
+        }
+      }),
 
   /** Détail d'un point par ID */
   detail: (id: number) =>
@@ -153,9 +170,16 @@ export const pointApi = {
   historique: (id: number) =>
     apiClient.get<HistoriqueStatut[]>(`/points/${id}/historique/`).then(r => r.data),
 
-  /** Soumettre un signalement */
-  signaler: (id: number, data: Partial<Signalement>) =>
-    apiClient.post<Signalement>(`/points/${id}/signaler/`, data).then(r => r.data),
+  /** Soumettre un signalement (multipart si photo présente) */
+  signaler: (id: number, data: { type_signalement: string; description: string; photo?: File | null }) => {
+    const fd = new FormData()
+    fd.append('type_signalement', data.type_signalement)
+    fd.append('description',      data.description)
+    if (data.photo) fd.append('photo', data.photo)
+    return apiClient
+      .post<Signalement>(`/points/${id}/signaler/`, fd)
+      .then(r => r.data)
+  },
 
   /** Statistiques globales */
   stats: () =>
@@ -168,6 +192,21 @@ export const pointApi = {
     apiClient.patch(`/points/${id}/`, data).then(r => r.data),
   delete: (id: number) =>
     apiClient.delete(`/points/${id}/`),
+
+  /** Upload photo terrain d'une borne (multipart) */
+  uploadPhoto: (id: number, file: File): Promise<PointGeodesiqueDetail> => {
+    const form = new FormData()
+    form.append('photo', file)
+    return apiClient
+      .patch<PointGeodesiqueDetail>(`/points/${id}/`, form, {
+        headers: { 'Content-Type': 'multipart/form-data' },
+      })
+      .then(r => r.data)
+  },
+
+  /** Suppression de la photo terrain */
+  deletePhoto: (id: number): Promise<PointGeodesiqueDetail> =>
+    apiClient.patch<PointGeodesiqueDetail>(`/points/${id}/`, { photo: null }).then(r => r.data),
 }
 
 // ═══════════════════════════════════════════════════════════════
@@ -206,8 +245,26 @@ export const authApi = {
 export const profilApi = {
   get: () =>
     apiClient.get<ProfilUtilisateur>('/profil/').then(r => r.data),
+
   update: (data: Partial<ProfilUtilisateur>) =>
     apiClient.patch<ProfilUtilisateur>('/profil/', data).then(r => r.data),
+
+  /** Upload de la photo de profil (multipart) — endpoint PATCH /profil/ avec FormData */
+  uploadPhoto: (file: File): Promise<ProfilUtilisateur> => {
+    const form = new FormData()
+    form.append('photo', file)
+    return apiClient
+      .patch<ProfilUtilisateur>('/profil/', form, {
+        headers: { 'Content-Type': 'multipart/form-data' },
+      })
+      .then(r => r.data)
+  },
+
+  /** Suppression de la photo de profil */
+  deletePhoto: (): Promise<ProfilUtilisateur> =>
+    apiClient
+      .patch<ProfilUtilisateur>('/profil/', { photo: null })
+      .then(r => r.data),
 }
 
 // ═══════════════════════════════════════════════════════════════

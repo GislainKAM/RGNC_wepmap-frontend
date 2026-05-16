@@ -5,6 +5,7 @@ import { Icon } from '@/components/ui/Icon'
 import { Badge, StatutBadge } from '@/components/ui/Badge'
 import { Button } from '@/components/ui/Button'
 import { OrdreIcon } from '@/components/ui/OrdreIcon'
+import { SignalementModal } from '@/components/map/SignalementModal'
 import { usePointDetail, useFicheSignaletique, useHistoriqueStatuts } from '@/hooks/useGeodeticPoints'
 import { useAuth } from '@/hooks/useAuth'
 import { useLanguage } from '@/hooks/useLanguage'
@@ -47,7 +48,8 @@ function CroquisSVG() {
 }
 
 export function PointFiche({ pointId, onClose, onToast }: PointFicheProps) {
-  const [activeTab, setActiveTab] = useState<Tab>('coordonnees')
+  const [activeTab,        setActiveTab]        = useState<Tab>('coordonnees')
+  const [showSignalement,  setShowSignalement]  = useState(false)
   const isAuth = useAuth((s) => s.isAuthenticated)
   const { t, lang } = useLanguage()
   const dateLocale = lang === 'fr' ? frLocale : enUS
@@ -99,7 +101,11 @@ export function PointFiche({ pointId, onClose, onToast }: PointFicheProps) {
                   <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 8 }}>
                     <StatutBadge statut={point.statut} />
                     <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 11, color: 'var(--fg-3)' }}>
-                      <OrdreIcon ordre={point.ordre} size={13} />
+                      <OrdreIcon ordre={point.ordre} size={13} color={
+                        point.statut === 'actif'   ? '#1F5D3A' :
+                        point.statut === 'degrade' ? '#D4A017' :
+                        point.statut === 'detruit' ? '#B83434' : '#9BA5AC'
+                      } />
                       {point.ordre_label}
                     </span>
                   </div>
@@ -272,19 +278,50 @@ export function PointFiche({ pointId, onClose, onToast }: PointFicheProps) {
           </div>
         )}
 
-        {/* Croquis tab */}
+        {/* Croquis / Photo tab */}
         {activeTab === 'croquis' && (
           <div className="fiche-tab-content">
-            <div className="fiche-photo">
-              {point?.photo ? (
-                <img src={point.photo} alt="Photo du point" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-              ) : (
-                <CroquisSVG />
-              )}
-            </div>
-            <p style={{ fontSize: 12, color: 'var(--fg-3)', textAlign: 'center' }}>
-              Croquis de localisation — {point?.nom ?? ''}
-            </p>
+            {point?.photo_url ? (
+              <>
+                {/* Photo terrain réelle */}
+                <a
+                  href={point.photo_url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  title={lang === 'fr' ? 'Ouvrir en grand' : 'Open full size'}
+                  style={{ display: 'block', textDecoration: 'none' }}
+                >
+                  <div className="fiche-photo fiche-photo--real">
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img
+                      src={point.photo_url}
+                      alt={`Photo de la borne ${point.matricule}`}
+                      style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}
+                    />
+                    {/* Overlay "agrandir" */}
+                    <div className="fiche-photo-overlay">
+                      <Icon name="maximize-2" size={18} color="#fff" />
+                    </div>
+                  </div>
+                </a>
+                <p style={{ fontSize: 11, color: 'var(--fg-4)', textAlign: 'center', marginTop: 6 }}>
+                  <Icon name="camera" size={11} style={{ verticalAlign: 'middle', marginRight: 4 }} />
+                  {lang === 'fr' ? 'Photo terrain · cliquer pour agrandir' : 'Field photo · click to enlarge'}
+                </p>
+              </>
+            ) : (
+              <>
+                {/* Croquis SVG générique si pas de photo */}
+                <div className="fiche-photo">
+                  <CroquisSVG />
+                </div>
+                <p style={{ fontSize: 11, color: 'var(--fg-4)', textAlign: 'center', marginTop: 6 }}>
+                  {lang === 'fr'
+                    ? 'Aucune photo disponible — croquis de localisation'
+                    : 'No photo available — location sketch'}
+                </p>
+              </>
+            )}
           </div>
         )}
 
@@ -366,13 +403,28 @@ export function PointFiche({ pointId, onClose, onToast }: PointFicheProps) {
           <Icon name="download" size={13} />
           {t('fiche.btn.pdf')}
         </Button>
-        {isAuth && (
-          <Button variant="ghost" size="sm" title={t('fiche.btn.signaler')}>
-            <Icon name="triangle-alert" size={13} />
-            {t('fiche.btn.signaler')}
-          </Button>
-        )}
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={() => setShowSignalement(true)}
+        >
+          <Icon name="triangle-alert" size={13} />
+          {t('fiche.btn.signaler')}
+        </Button>
       </div>
+
+      {/* Modale de signalement — montée en dehors du panel pour z-index correct */}
+      {showSignalement && pointId != null && (
+        <SignalementModal
+          pointId={pointId}
+          pointMatricule={point?.matricule}
+          onClose={() => setShowSignalement(false)}
+          onSuccess={() => {
+            setShowSignalement(false)
+            onToast?.(t('signal.success'), 'success')
+          }}
+        />
+      )}
     </div>
   )
 }

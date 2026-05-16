@@ -1,6 +1,6 @@
 'use client'
 
-import React, { useState, useCallback } from 'react'
+import React, { useState, useCallback, useEffect } from 'react'
 import dynamic from 'next/dynamic'
 import { Header } from '@/components/layout/Header'
 import { StatsStrip } from '@/components/layout/StatsStrip'
@@ -32,7 +32,13 @@ const DEFAULT_FILTERS: FiltresCarteState = {
 export default function MapPage() {
   const [view, setView]                 = useState<'map' | 'list'>('map')
   const [selectedId, setSelectedId]     = useState<number | null>(null)
+  // Commence à false (identique serveur/client pour éviter l'erreur d'hydratation).
+  // Après montage, on ferme automatiquement sur mobile.
   const [filtersCollapsed, setFiltersCollapsed] = useState(false)
+
+  useEffect(() => {
+    if (window.innerWidth < 768) setFiltersCollapsed(true)
+  }, [])
   const [filters, setFilters]           = useState<FiltresCarteState>(DEFAULT_FILTERS)
   const { toasts, addToast, dismissToast } = useToasts()
 
@@ -81,8 +87,10 @@ export default function MapPage() {
           filters={filters}
           onFiltersChange={handleFiltersChange}
           collapsed={filtersCollapsed}
+          onClose={() => setFiltersCollapsed(true)}
           regions={regions}
           stats={stats ?? null}
+          geojson={geojson ?? null}
           total={visibleCount}
         />
 

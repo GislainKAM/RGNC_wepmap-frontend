@@ -156,7 +156,11 @@ export function PointList({ points, onPickPoint, isLoading }: PointListProps) {
                       <td style={{ fontWeight: 500, maxWidth: 180 }}>{p.nom}</td>
                       <td>
                         <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}>
-                          <OrdreIcon ordre={p.ordre} size={13} />
+                          <OrdreIcon ordre={p.ordre} size={13} color={
+                            p.statut === 'actif'   ? '#1F5D3A' :
+                            p.statut === 'degrade' ? '#D4A017' :
+                            p.statut === 'detruit' ? '#B83434' : '#9BA5AC'
+                          } />
                           <span className="muted-cell" style={{ fontSize: 12 }}>{p.ordre_label || `Ord. ${p.ordre}`}</span>
                         </span>
                       </td>

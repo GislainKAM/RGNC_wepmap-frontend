@@ -26,7 +26,72 @@ const STATUT_COLORS: Record<string, string> = {
   detruit: '#B83434',
   inconnu: '#9BA5AC',
 }
-const SELECTED_COLOR = '#B85729'
+// ── Moteur de clustering par groupe (ordre + statut) ─────────────
+//
+// `ol/source/Cluster` ne filtre pas par attribut — on l'implémente manuellement.
+// Algorithme : greedy centroïde glissant, O(N × K) par groupe.
+//
+// rawFeatures   : features OL brutes (EPSG:3857)
+// resolution    : mètres / pixel à l'échelle actuelle  (view.getResolution())
+// pixelDistance : seuil de regroupement en pixels (ex : 40)
+// OlFeature / OlPoint : classes OL passées en paramètre
+
+function buildDisplayFeatures(
+  rawFeatures: any[],
+  resolution: number,
+  pixelDistance: number,
+  OlFeature: any,
+  OlPoint: any,
+): any[] {
+  // 1. Regrouper par (ordre, statut) — on ne cluster que les « mêmes » points
+  const groups = new Map<string, any[]>()
+  for (const f of rawFeatures) {
+    const p   = f.getProperties()
+    const key = `${p.ordre ?? 3}__${p.statut ?? 'inconnu'}`
+    if (!groups.has(key)) groups.set(key, [])
+    groups.get(key)!.push(f)
+  }
+
+  const meterDist = pixelDistance * resolution   // distance de clustering en mètres
+  const result: any[] = []
+
+  for (const features of groups.values()) {
+    // 2. Clustering spatial greedy à l'intérieur du groupe
+    const clusters: { cx: number; cy: number; members: any[] }[] = []
+
+    for (const f of features) {
+      const [fx, fy] = f.getGeometry().getCoordinates()
+      let merged = false
+      for (const cl of clusters) {
+        const dx = fx - cl.cx, dy = fy - cl.cy
+        if (Math.sqrt(dx * dx + dy * dy) <= meterDist) {
+          cl.members.push(f)
+          // Recalculer le centroïde (moyenne glissante)
+          const n = cl.members.length
+          cl.cx += (fx - cl.cx) / n
+          cl.cy += (fy - cl.cy) / n
+          merged = true
+          break
+        }
+      }
+      if (!merged) clusters.push({ cx: fx, cy: fy, members: [f] })
+    }
+
+    // 3. Créer une feature d'affichage par cluster
+    for (const cl of clusters) {
+      const df = new OlFeature(new OlPoint([cl.cx, cl.cy]))
+      df.set('_members', cl.members)
+      df.set('_size',    cl.members.length)
+      const mp = cl.members[0].getProperties()
+      df.set('ordre',  mp.ordre  ?? 3)
+      df.set('statut', mp.statut ?? 'inconnu')
+      if (cl.members.length === 1) df.setId(cl.members[0].getId())
+      result.push(df)
+    }
+  }
+
+  return result
+}
 
 const BASEMAPS: { id: Basemap; label: string; color: string }[] = [
   { id: 'osm',          label: 'OpenStreetMap',   color: '#E8E0D0' },
@@ -54,42 +119,109 @@ function makeLocMarkerSvg(): string {
 }
 
 // ── Marker helper ────────────────────────────────────────────────
+//
+// Règles de design :
+//  • La FORME encode l'ordre  : triangle=1er, losange=2ème, cercle=3ème
+//  • La COULEUR encode le statut (passée par l'appelant)
+//  • Contour blanc 2px → lisible sur tous les fonds (OSM, satellite, hybride)
+//  • La sélection est rendue par une couche OL dédiée (anneau géographique)
+//    → le marqueur lui-même grossit légèrement mais reste sobre
+//  • Ancre centre géométrique (anchor: [0.5, 0.5])
 
 function makeSvgMarker(ordre: number, color: string, selected: boolean): string {
-  const size   = selected ? 20 : 15
-  const stroke = selected ? '#fff' : 'rgba(255,255,255,0.85)'
-  const sw     = selected ? 2.5 : 1.8
+  const S   = selected ? 26 : 20
+  const cx  = S / 2
+  const cy  = S / 2
+  const pad = 2
+  const r   = S / 2 - pad
+
+  // Contour blanc fin — lisible sans être envahissant
+  const strokeW = 1.4
+  const stroke  = 'rgba(255,255,255,0.88)'
 
   let shape: string
+
   if (ordre === 1) {
-    // Triangle géodésique avec croix intérieure
+    // Triangle équilatéral de demi-base r → hauteur = r√3
+    // (l'erreur précédente utilisait r√3/2, soit la hauteur d'un triangle de CÔTÉ r)
+    const h    = r * Math.sqrt(3)
+    const base = r
+    const top  = cy - h * 2 / 3   // sommet   : 2/3 de h au-dessus du centroïde
+    const bot  = cy + h / 3        // base     : 1/3 de h en-dessous du centroïde
+    const arm  = r * 0.22          // croix intérieure légèrement agrandie
     shape = `
-      <polygon points="${size/2},2 ${size-2},${size-2} 2,${size-2}"
-        fill="${color}" stroke="${stroke}" stroke-width="${sw}" stroke-linejoin="round"/>
-      <line x1="${size/2}" y1="${size*0.52}" x2="${size/2}" y2="${size*0.76}"
-        stroke="${stroke}" stroke-width="1.1" stroke-linecap="round"/>
-      <line x1="${size*0.36}" y1="${size*0.64}" x2="${size*0.64}" y2="${size*0.64}"
-        stroke="${stroke}" stroke-width="1.1" stroke-linecap="round"/>
-      <circle cx="${size/2}" cy="${size*0.64}" r="${size*0.12}" fill="${stroke}"/>`
+      <polygon points="${cx},${top} ${cx+base},${bot} ${cx-base},${bot}"
+        fill="${color}" stroke="${stroke}" stroke-width="${strokeW}" stroke-linejoin="round"/>
+      <line x1="${cx}" y1="${cy-arm}" x2="${cx}" y2="${cy+arm}"
+        stroke="${stroke}" stroke-width="1.0" stroke-linecap="round" opacity="0.8"/>
+      <line x1="${cx-arm}" y1="${cy}" x2="${cx+arm}" y2="${cy}"
+        stroke="${stroke}" stroke-width="1.0" stroke-linecap="round" opacity="0.8"/>`
+
   } else if (ordre === 2) {
-    // Losange avec point central
-    const h = size / 2
     shape = `
-      <polygon points="${h},1.5 ${size-1.5},${h} ${h},${size-1.5} 1.5,${h}"
-        fill="${color}" stroke="${stroke}" stroke-width="${sw}" stroke-linejoin="round"/>
-      <circle cx="${h}" cy="${h}" r="${size*0.16}" fill="${stroke}"/>`
+      <polygon points="${cx},${pad} ${S-pad},${cy} ${cx},${S-pad} ${pad},${cy}"
+        fill="${color}" stroke="${stroke}" stroke-width="${strokeW}" stroke-linejoin="round"/>
+      <circle cx="${cx}" cy="${cy}" r="${r * 0.15}" fill="${stroke}" opacity="0.85"/>`
+
   } else {
-    // Cercle avec anneau intérieur
-    const cx = size / 2, cy = size / 2
-    const r  = size / 2 - 1.8
     shape = `
-      <circle cx="${cx}" cy="${cy}" r="${r}" fill="${color}" stroke="${stroke}" stroke-width="${sw}"/>
-      <circle cx="${cx}" cy="${cy}" r="${size*0.18}" fill="${stroke}"/>`
+      <circle cx="${cx}" cy="${cy}" r="${r}"
+        fill="${color}" stroke="${stroke}" stroke-width="${strokeW}"/>
+      <circle cx="${cx}" cy="${cy}" r="${r * 0.20}" fill="${stroke}" opacity="0.85"/>`
   }
 
-  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}" viewBox="0 0 ${size} ${size}">${shape}</svg>`
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${S}" height="${S}" viewBox="0 0 ${S} ${S}">${shape}</svg>`
   return 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svg)
 }
+
+// ── Cluster helper ─────────────────────────────────────────────────
+// Même forme que le marqueur individuel (ordre → triangle/losange/cercle),
+// même couleur (statut), avec le nombre d'éléments agrégés inscrit à l'intérieur.
+function makeClusterMarkerSvg(ordre: number, color: string, count: number): string {
+  // Taille plus grande que le marqueur simple pour absorber le texte
+  const S   = count < 10 ? 32 : count < 100 ? 38 : 44
+  const cx  = S / 2, cy = S / 2
+  const pad = 2.5
+  const r   = S / 2 - pad
+
+  const strokeW = 2.0
+  const stroke  = 'rgba(255,255,255,0.90)'
+  // Taille de police adaptée au nb de chiffres
+  const fs = count < 10 ? 12 : count < 100 ? 10 : 8
+
+  let shape: string
+  let textY = cy    // position verticale du texte (centroïde)
+
+  if (ordre === 1) {
+    // Triangle équilatéral de demi-base r → hauteur = r√3
+    const h    = r * Math.sqrt(3)
+    const base = r
+    const top  = cy - (h * 2) / 3
+    const bot  = cy + h / 3
+    textY = cy   // centroïde géométrique = cy (invariant avec la formule corrigée)
+    shape = `<polygon points="${cx},${top} ${cx + base},${bot} ${cx - base},${bot}"
+        fill="${color}" stroke="${stroke}" stroke-width="${strokeW}" stroke-linejoin="round"/>`
+  } else if (ordre === 2) {
+    // Losange — centroïde = centre géométrique
+    shape = `<polygon points="${cx},${pad} ${S - pad},${cy} ${cx},${S - pad} ${pad},${cy}"
+        fill="${color}" stroke="${stroke}" stroke-width="${strokeW}" stroke-linejoin="round"/>`
+  } else {
+    // Cercle
+    shape = `<circle cx="${cx}" cy="${cy}" r="${r}"
+        fill="${color}" stroke="${stroke}" stroke-width="${strokeW}"/>`
+  }
+
+  const text = `<text x="${cx}" y="${textY}" text-anchor="middle" dominant-baseline="central"
+      font-family="monospace" font-size="${fs}" font-weight="700" fill="white"
+      paint-order="stroke" stroke="rgba(0,0,0,0.25)" stroke-width="2">${count}</text>`
+
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${S}" height="${S}" viewBox="0 0 ${S} ${S}">${shape}${text}</svg>`
+  return 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svg)
+}
+
+// ── Rayon de l'anneau de sélection (en mètres, EPSG:3857) ────────
+// 45 m → ~36 px à zoom 17 (bâtiments visibles) — distingue le point de ses voisins
+const SELECTION_RING_RADIUS_M = 45
 
 // ── Scale bar helper ─────────────────────────────────────────────
 
@@ -107,15 +239,20 @@ export function MapCanvas({ points, selectedId, onPickPoint }: MapCanvasProps) {
   const { lang } = useLanguage()
 
   // Map refs
-  const mapRef          = useRef<HTMLDivElement>(null)
-  const mapInstanceRef  = useRef<any>(null)
-  const vectorSourceRef = useRef<any>(null)
-  const vectorLayerRef  = useRef<any>(null)
-  const tileLayerRef    = useRef<any>(null)
-  const olRef             = useRef<any>(null)          // modules OL mis en cache après init
-  const measureSourceRef  = useRef<any>(null)
+  const mapRef             = useRef<HTMLDivElement>(null)
+  const mapInstanceRef     = useRef<any>(null)
+  const vectorSourceRef    = useRef<any>(null)
+  const vectorLayerRef     = useRef<any>(null)
+  const tileLayerRef       = useRef<any>(null)
+  const olRef              = useRef<any>(null)   // modules OL mis en cache après init
+  const measureSourceRef   = useRef<any>(null)
   const drawInteractionRef = useRef<any>(null)
-  const locMarkerSourceRef = useRef<any>(null)          // source pour le marqueur GPS utilisateur
+  const locMarkerSourceRef = useRef<any>(null)   // marqueur GPS utilisateur
+  const selectionSourceRef = useRef<any>(null)   // anneau de sélection (cercle géographique)
+  const displaySourceRef   = useRef<any>(null)   // features d'affichage (clusters + points seuls)
+  const selectedIdRef      = useRef<number | null>(null)   // id sélectionné (lu par le style OL)
+  const currentZoomRef     = useRef<number>(DEFAULT_ZOOM)  // zoom courant (lu par le style OL pour les étiquettes)
+  const latestPointsRef    = useRef<GeoJSONFeatureCollection | null>(null) // dernières données reçues (résout la race condition init async / cache)
 
   // UI state
   const [activeTool,        setActiveTool]        = useState<Tool>('pan')
@@ -144,12 +281,13 @@ export function MapCanvas({ points, selectedId, onPickPoint }: MapCanvasProps) {
         { default: VectorLayer  },
         { default: VectorSource },
         { default: GeoJSON  },
-        { Style, Icon: OlIcon, Stroke, Fill, Circle: CircleStyle },
+        { Style, Icon: OlIcon, Stroke, Fill, Circle: CircleStyle, Text: OlText },
         { fromLonLat, toLonLat },
         { default: Draw      },
         sphereModule,
         { default: OlFeature },
         { default: OlPoint   },
+        { default: OlCircleGeom },
       ] = await Promise.all([
         import('ol/Map'),
         import('ol/View'),
@@ -165,6 +303,7 @@ export function MapCanvas({ points, selectedId, onPickPoint }: MapCanvasProps) {
         import('ol/sphere'),
         import('ol/Feature'),
         import('ol/geom/Point'),
+        import('ol/geom/Circle'),  // anneau de sélection géographique
       ])
 
       if (!isMounted || !mapRef.current) return
@@ -173,33 +312,91 @@ export function MapCanvas({ points, selectedId, onPickPoint }: MapCanvasProps) {
       olRef.current = {
         OlMap, View, TileLayer, OSM, XYZ,
         VectorLayer, VectorSource, GeoJSON,
-        Style, OlIcon, Stroke, Fill, CircleStyle,
+        Style, OlIcon, Stroke, Fill, CircleStyle, OlText,
         fromLonLat, toLonLat,
-        Draw, OlFeature, OlPoint,
+        Draw, OlFeature, OlPoint, OlCircleGeom,
         getLength: sphereModule.getLength,
       }
 
-      // Source vecteur — points géodésiques
+      // ── Source vecteur brute — points géodésiques ────────────────
       const vectorSource = new VectorSource({ format: new GeoJSON() })
       vectorSourceRef.current = vectorSource
+
+      // ── Source d'affichage — alimentée par buildDisplayFeatures ──
+      // Contient clusters (N membres) + points seuls, regroupés par (ordre, statut)
+      const displaySource = new VectorSource()
+      displaySourceRef.current = displaySource
 
       // Source vecteur — mesures
       const measureSource = new VectorSource()
       measureSourceRef.current = measureSource
 
-      // Style des marqueurs
+      // ── Helper : reconstruit displaySource à partir de vectorSource ──
+      const refreshClusters = () => {
+        if (!vectorSourceRef.current || !displaySourceRef.current || !mapInstanceRef.current) return
+        const resolution = mapInstanceRef.current.getView().getResolution() ?? 1
+        const raw        = vectorSourceRef.current.getFeatures()
+        const { OlFeature: OlFeat, OlPoint: OlPt } = olRef.current
+        const display    = buildDisplayFeatures(raw, resolution, 40, OlFeat, OlPt)
+        displaySourceRef.current.clear()
+        displaySourceRef.current.addFeatures(display)
+      }
+
+      // ── Style des marqueurs / clusters ──────────────────────────
       const vectorLayer = new VectorLayer({
-        source: vectorSource,
+        source: displaySource,
         zIndex: 10,
         style: (feature: any) => {
-          const props    = feature.getProperties()
-          const ordre    = props.ordre  ?? 3
-          const statut   = props.statut ?? 'inconnu'
-          const fid      = feature.getId()
-          const isSel    = fid === selectedId
-          const color    = isSel ? SELECTED_COLOR : (STATUT_COLORS[statut] ?? '#9BA5AC')
+          const members = feature.get('_members') as any[] | undefined
+          const size    = feature.get('_size')    as number ?? 1
+
+          const ordre  = feature.get('ordre')  ?? members?.[0]?.getProperties()?.ordre  ?? 3
+          const statut = feature.get('statut') ?? members?.[0]?.getProperties()?.statut ?? 'inconnu'
+          const color  = STATUT_COLORS[statut] ?? '#9BA5AC'
+
+          if (size > 1) {
+            // ── Cluster : même forme + nb agrégés inscrit à l'intérieur ──────
+            return new Style({
+              image: new OlIcon({
+                src:    makeClusterMarkerSvg(ordre, color, size),
+                anchor: [0.5, 0.5],
+              }),
+            })
+          }
+
+          // ── Point unique ──────────────────────────────────────────────────
+          const fid   = feature.getId()
+          const isSel = fid === selectedIdRef.current
+          const imgSrc = makeSvgMarker(ordre, color, isSel)
+
+          // Étiquettes à partir du zoom 14 (navigation terrain)
+          //  · zoom 14-15 → matricule (code court, unique)
+          //  · zoom >= 16  → nom géographique (plus descriptif)
+          const zoom = currentZoomRef.current
+          if (zoom >= 14) {
+            const rawProps = members?.[0]?.getProperties() ?? {}
+            const label    = zoom >= 16
+              ? (rawProps.nom || rawProps.matricule || '')
+              : (rawProps.matricule || '')
+
+            return new Style({
+              image: new OlIcon({ src: imgSrc, anchor: [0.5, 0.5] }),
+              text: label
+                ? new OlText({
+                    text:       label,
+                    font:       'bold 10px "Inter", system-ui, sans-serif',
+                    fill:       new Fill({ color: '#111827' }),
+                    stroke:     new Stroke({ color: 'rgba(255,255,255,0.92)', width: 3 }),
+                    offsetY:    isSel ? -17 : -14,   // au-dessus du marqueur
+                    overflow:   true,
+                    placement:  'point',
+                  })
+                : undefined,
+            })
+          }
+
           return new Style({
-            image: new OlIcon({ src: makeSvgMarker(ordre, color, isSel), anchor: [0.5, 0.5] }),
+            image: new OlIcon({ src: imgSrc, anchor: [0.5, 0.5] }),
           })
         },
       })
@@ -233,17 +430,30 @@ export function MapCanvas({ points, selectedId, onPickPoint }: MapCanvasProps) {
         }),
       })
 
+      // ── Couche anneau de sélection (cercle géographique à tirets) ────
+      // zIndex 5 : sous les marqueurs pour ne pas masquer les voisins
+      const selectionSource = new VectorSource()
+      selectionSourceRef.current = selectionSource
+      const selectionLayer = new VectorLayer({
+        source: selectionSource,
+        zIndex: 5,
+      })
+
       // Fond de carte OSM par défaut
       const tileLayer = new TileLayer({ source: new OSM(), zIndex: 0 })
       tileLayerRef.current = tileLayer
 
+      // Zoom initial : préférence utilisateur > constante par défaut
+      const savedZoom = Number(localStorage.getItem('rgnc-pref-zoom') || DEFAULT_ZOOM)
+      const initZoom  = (savedZoom >= MIN_ZOOM && savedZoom <= MAX_ZOOM) ? savedZoom : DEFAULT_ZOOM
+
       // Initialisation de la carte
       const map = new OlMap({
         target: mapRef.current!,
-        layers: [tileLayer, measureLayer, vectorLayer, locMarkerLayer],
+        layers: [tileLayer, selectionLayer, measureLayer, vectorLayer, locMarkerLayer],
         view: new View({
           center: fromLonLat(CAMEROON_CENTER),
-          zoom: DEFAULT_ZOOM,
+          zoom: initZoom,
           minZoom: MIN_ZOOM,
           maxZoom: MAX_ZOOM,
         }),
@@ -251,37 +461,82 @@ export function MapCanvas({ points, selectedId, onPickPoint }: MapCanvasProps) {
       })
       mapInstanceRef.current = map
 
-      // Clic → sélection du point
+      // ── Race condition : si les données étaient déjà disponibles pendant l'init async ──
+      // (TanStack Query retourne le cache instantanément au 2e passage sur la page,
+      //  avant que les imports dynamiques OL soient résolus → useEffect[points] s'est
+      //  exécuté mais a vu vectorSourceRef.current = null → rien n'a été ajouté)
+      if (latestPointsRef.current) {
+        const fmt      = new GeoJSON()
+        const features = fmt.readFeatures(latestPointsRef.current, {
+          featureProjection: 'EPSG:3857',
+          dataProjection:    'EPSG:4326',
+        })
+        vectorSource.addFeatures(features)
+        const resolution = map.getView().getResolution() ?? 1
+        const display    = buildDisplayFeatures(features, resolution, 40, OlFeature, OlPoint)
+        displaySource.addFeatures(display)
+
+        // Zoom sur l'étendue des données disponibles au démarrage
+        if (features.length > 0) {
+          const extent = vectorSource.getExtent()
+          if (isFinite(extent[0])) {
+            map.getView().fit(extent, {
+              padding:  [60, 60, 60, 60],
+              maxZoom:  16,
+              duration: 600,
+            })
+          }
+        }
+      }
+
+      // Clic → sélection ou zoom cluster
       map.on('click', (evt: any) => {
-        const feature = map.forEachFeatureAtPixel(evt.pixel, (f: any) => f, {
+        const displayFeature = map.forEachFeatureAtPixel(evt.pixel, (f: any) => f, {
           layerFilter: (l: any) => l === vectorLayer,
         })
-        if (feature) {
-          const id = feature.getId() as number
+        if (!displayFeature) return
+
+        const size    = displayFeature.get('_size') as number ?? 1
+        const members = displayFeature.get('_members') as any[] | undefined
+
+        if (size > 1) {
+          // Cluster → zoom pour décluster
+          const view    = map.getView()
+          const center  = displayFeature.getGeometry()?.getCoordinates?.()
+          const curZoom = view.getZoom() ?? DEFAULT_ZOOM
+          view.animate({ center, zoom: curZoom + 3, duration: 500 })
+        } else {
+          // Point unique → sélection
+          // L'id est copié sur la display feature dans buildDisplayFeatures
+          const id = displayFeature.getId() as number ?? members?.[0]?.getId()
           if (id != null) onPickPoint(id)
         }
       })
 
-      // Pointermove → curseur + coordonnées
+      // Pointermove → curseur pointer sur marqueur ou cluster + coordonnées
+      // ─ On cible map.getViewport() (le div interactif OL, pas son conteneur parent)
+      // ─ hitTolerance: 8 px pour absorber les petits marqueurs SVG
       map.on('pointermove', (evt: any) => {
         if (evt.dragging) return
         const hit = map.hasFeatureAtPixel(evt.pixel, {
-          layerFilter: (l: any) => l === vectorLayer,
+          layerFilter:  (l: any) => l === vectorLayer,
+          hitTolerance: 8,
         })
-        map.getTargetElement().style.cursor = hit ? 'pointer' : ''
-
+        ;(map.getViewport() as HTMLElement).style.cursor = hit ? 'pointer' : ''
         const [lon, lat] = toLonLat(evt.coordinate)
         setCursorCoords([lon, lat])
       })
 
-      // Moveend → zoom + barre d'échelle
+      // Moveend → zoom + barre d'échelle + recalcul clusters + refresh étiquettes
       const updateZoomScale = () => {
         const view       = map.getView()
         const z          = view.getZoom() ?? DEFAULT_ZOOM
         const resolution = view.getResolution() ?? 1
         setCurrentZoom(z)
-        // 72 px × resolution m/px = longueur de la barre
+        currentZoomRef.current = z   // lu par le style OL pour afficher/masquer les étiquettes
         setScaleLabel(niceDistance(72 * resolution))
+        // Recalculer les clusters selon la résolution courante
+        refreshClusters()
       }
       map.on('moveend', updateZoomScale)
       updateZoomScale()
@@ -290,6 +545,7 @@ export function MapCanvas({ points, selectedId, onPickPoint }: MapCanvasProps) {
       setIsOffline(!navigator.onLine)
       window.addEventListener('online',  () => setIsOffline(false))
       window.addEventListener('offline', () => setIsOffline(true))
+
     }
 
     initMap()
@@ -303,9 +559,25 @@ export function MapCanvas({ points, selectedId, onPickPoint }: MapCanvasProps) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
+  // ── 1b. Écoute des changements de préférences utilisateur ────
+  // Déclenché par PrefModal via window.dispatchEvent('rgnc-pref-changed')
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const { zoom } = (e as CustomEvent<{ zoom: number }>).detail ?? {}
+      if (zoom && mapInstanceRef.current) {
+        mapInstanceRef.current.getView().animate({ zoom, duration: 500 })
+      }
+    }
+    window.addEventListener('rgnc-pref-changed', handler)
+    return () => window.removeEventListener('rgnc-pref-changed', handler)
+  }, [])
+
   // ── 2. Mise à jour des entités (points) ───────────────────────
 
   useEffect(() => {
+    // Toujours mémoriser les dernières données — résout la race condition :
+    // TanStack Query peut retourner le cache *avant* que initMap() termine
+    latestPointsRef.current = points
     if (!vectorSourceRef.current || !points) return
     async function updateFeatures() {
       const { default: GeoJSON } = await import('ol/format/GeoJSON')
@@ -317,24 +589,84 @@ export function MapCanvas({ points, selectedId, onPickPoint }: MapCanvasProps) {
         dataProjection:    'EPSG:4326',
       })
       source.addFeatures(features)
+
+      // Reconstruire la source d'affichage (clusters + points seuls)
+      if (displaySourceRef.current && mapInstanceRef.current) {
+        const resolution = mapInstanceRef.current.getView().getResolution() ?? 1
+        const { OlFeature: OlFeat, OlPoint: OlPt } = olRef.current ?? {}
+        if (OlFeat && OlPt) {
+          const display = buildDisplayFeatures(features, resolution, 40, OlFeat, OlPt)
+          displaySourceRef.current.clear()
+          displaySourceRef.current.addFeatures(display)
+        }
+      }
+
+      // ── Zoom automatique sur l'étendue des données ──────────────
+      // Déclenché à chaque changement de filtre → la carte se recentre sur les points visibles
+      if (features.length > 0 && mapInstanceRef.current) {
+        const extent = source.getExtent()
+        // getExtent() renvoie [Inf, Inf, -Inf, -Inf] si la source est vide
+        if (isFinite(extent[0])) {
+          mapInstanceRef.current.getView().fit(extent, {
+            padding:  [60, 60, 60, 60],   // marge en px (top/right/bottom/left)
+            maxZoom:  16,                  // évite de trop zoomer sur 1 seul point
+            duration: 600,
+          })
+        }
+      }
     }
     updateFeatures()
   }, [points])
 
-  // ── 3. Fly-to sur sélection ───────────────────────────────────
+  // ── 3. Fly-to + anneau de sélection ─────────────────────────────
 
   useEffect(() => {
-    if (!mapInstanceRef.current || selectedId == null || !vectorSourceRef.current) return
+    // Synchroniser la ref (lue par le style OL — closure ne capture pas les re-renders React)
+    selectedIdRef.current = selectedId ?? null
+
+    // Nettoyer l'anneau quand rien n'est sélectionné
+    if (selectedId == null) {
+      selectionSourceRef.current?.clear()
+      vectorLayerRef.current?.changed()
+      return
+    }
+    if (!mapInstanceRef.current || !vectorSourceRef.current || !olRef.current) return
+
     const feature = vectorSourceRef.current.getFeatureById(selectedId)
     if (!feature) return
+
     const coords = feature.getGeometry()?.getCoordinates?.()
     if (!coords) return
-    const view = mapInstanceRef.current.getView()
-    view.animate({ center: coords, zoom: Math.max(view.getZoom() ?? DEFAULT_ZOOM, 12), duration: 600 })
-    vectorLayerRef.current?.changed()
-  }, [selectedId])
 
-  useEffect(() => {
+    // ── Fly-to zoom bâtiment (niveau 17 = bâtiments bien visibles) ──
+    const view = mapInstanceRef.current.getView()
+    const currentZoom = view.getZoom() ?? DEFAULT_ZOOM
+    view.animate({
+      center:   coords,
+      zoom:     Math.max(currentZoom, 17),   // au moins zoom 17 pour voir les bâtiments
+      duration: 700,
+    })
+
+    // ── Anneau de sélection géographique à tirets ──────────────────
+    const { OlFeature, OlCircleGeom, Style, Stroke } = olRef.current
+    const statut = feature.getProperties()?.statut ?? 'inconnu'
+    const ringColor = STATUT_COLORS[statut] ?? '#9BA5AC'
+
+    selectionSourceRef.current?.clear()
+
+    // OlCircleGeom(centre_EPSG3857, rayon_en_mètres)
+    const circle = new OlCircleGeom(coords, SELECTION_RING_RADIUS_M)
+    const ringFeature = new OlFeature(circle)
+    ringFeature.setStyle(new Style({
+      stroke: new Stroke({
+        color:    ringColor,
+        width:    2.5,
+        lineDash: [9, 6],   // tirets espacés — clairement distinct des contours de marqueurs
+      }),
+    }))
+    selectionSourceRef.current?.addFeature(ringFeature)
+
+    // Forcer le re-rendu du layer marqueurs (marqueur sélectionné grossit)
     vectorLayerRef.current?.changed()
   }, [selectedId])
 

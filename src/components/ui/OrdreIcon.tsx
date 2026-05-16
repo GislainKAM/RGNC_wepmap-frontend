@@ -18,12 +18,9 @@ interface OrdreIconProps {
  *  3 = circle (densification)
  */
 export function OrdreIcon({ ordre, size = 18, color, className, style }: OrdreIconProps) {
-  const defaultColors: Record<number, string> = {
-    1: '#1F5D3A',
-    2: '#B85729',
-    3: '#1E6091',
-  }
-  const fill = color ?? defaultColors[ordre] ?? '#5A6770'
+  // Couleur neutre par défaut — la couleur significative (statut) doit être
+  // fournie explicitement par l'appelant via la prop `color`.
+  const fill = color ?? '#5A6770'
 
   if (ordre === 1) {
     return (

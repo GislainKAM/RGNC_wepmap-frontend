@@ -108,27 +108,28 @@ function PrefModal({ onClose, t, lang, setLang }: {
   lang:    'fr' | 'en'
   setLang: (l: 'fr' | 'en') => void
 }) {
-  const [zoom,    setZoom]    = useState(() => {
-    if (typeof window === 'undefined') return 6
-    return Number(localStorage.getItem('rgnc-pref-zoom') ?? 6)
-  })
-  const [emailNotif, setEmailNotif] = useState(() => {
-    if (typeof window === 'undefined') return false
-    return localStorage.getItem('rgnc-pref-emailnotif') === 'true'
-  })
-  const [saved, setSaved] = useState(false)
+  // ── Lecture des prefs stockées — via useEffect pour éviter l'erreur SSR ──
+  const [zoom,       setZoom]       = useState(6)
+  const [emailNotif, setEmailNotif] = useState(false)
+  const [saved,      setSaved]      = useState(false)
+
+  useEffect(() => {
+    setZoom(Number(localStorage.getItem('rgnc-pref-zoom') ?? 6))
+    setEmailNotif(localStorage.getItem('rgnc-pref-emailnotif') === 'true')
+  }, [])
 
   const save = () => {
-    localStorage.setItem('rgnc-pref-zoom', String(zoom))
+    localStorage.setItem('rgnc-pref-zoom',       String(zoom))
     localStorage.setItem('rgnc-pref-emailnotif', String(emailNotif))
+    // Émettre un événement custom pour que MapCanvas puisse réagir sans re-mount
+    window.dispatchEvent(new CustomEvent('rgnc-pref-changed', { detail: { zoom } }))
     setSaved(true)
     setTimeout(() => { setSaved(false); onClose() }, 900)
   }
 
-  const inputSt: React.CSSProperties = {
-    height: 32, border: '1px solid var(--border-subtle)', borderRadius: 'var(--radius-sm)',
-    padding: '0 10px', fontFamily: 'var(--font-body)', fontSize: 13,
-    color: 'var(--fg-1)', background: 'var(--bg-sunken)', outline: 'none',
+  const btnBase: React.CSSProperties = {
+    height: 32, borderRadius: 'var(--radius-sm)', cursor: 'pointer',
+    fontFamily: 'var(--font-body)', fontSize: 13, border: '1px solid var(--border-subtle)',
   }
   const lbl: React.CSSProperties = { fontSize: 12, fontWeight: 500, color: 'var(--fg-2)', display: 'block', marginBottom: 6 }
   const row: React.CSSProperties = { marginBottom: 18 }
@@ -140,7 +141,7 @@ function PrefModal({ onClose, t, lang, setLang }: {
 
       {/* Panneau */}
       <div style={{
-        position: 'relative', width: 380,
+        position: 'relative', width: 'min(380px, calc(100vw - 32px))',
         background: 'var(--bg-elevated)', borderRadius: 'var(--radius-md)',
         boxShadow: 'var(--shadow-lg)', overflow: 'hidden',
       }}>
@@ -183,15 +184,22 @@ function PrefModal({ onClose, t, lang, setLang }: {
 
           {/* Zoom initial */}
           <div style={row}>
-            <label style={lbl}>{t('header.pref.zoom_carte')} — <b style={{ color: 'var(--rgnc-foret-700)' }}>{zoom}</b></label>
+            <label style={lbl}>
+              {t('header.pref.zoom_carte')} —{' '}
+              <b style={{ color: 'var(--rgnc-foret-700)' }}>{zoom}</b>
+            </label>
             <input
               type="range" min={5} max={14} step={1} value={zoom}
               onChange={(e) => setZoom(Number(e.target.value))}
               style={{ width: '100%', accentColor: 'var(--rgnc-foret-700)', cursor: 'pointer' }}
             />
             <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 10, color: 'var(--fg-4)', marginTop: 2 }}>
-              <span>5 — National</span><span>14 — Local</span>
+              <span>5 — {lang === 'fr' ? 'National' : 'National'}</span>
+              <span>14 — {lang === 'fr' ? 'Local' : 'Local'}</span>
             </div>
+            <p style={{ margin: '4px 0 0', fontSize: 11, color: 'var(--fg-4)' }}>
+              {t('header.pref.zoom_aide')}
+            </p>
           </div>
 
           {/* Notifications email */}
@@ -204,9 +212,11 @@ function PrefModal({ onClose, t, lang, setLang }: {
               {/* Toggle switch */}
               <button
                 onClick={() => setEmailNotif((v) => !v)}
+                aria-checked={emailNotif}
+                role="switch"
                 style={{
                   width: 40, height: 22, borderRadius: 11, border: 'none', cursor: 'pointer',
-                  background: emailNotif ? 'var(--rgnc-foret-700)' : 'var(--border-subtle)',
+                  background: emailNotif ? 'var(--rgnc-foret-700)' : 'var(--border-strong)',
                   position: 'relative', transition: 'background 200ms', flexShrink: 0,
                 }}
               >
@@ -224,15 +234,20 @@ function PrefModal({ onClose, t, lang, setLang }: {
         <div style={{ padding: '12px 20px', borderTop: '1px solid var(--border-subtle)', display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
           <button
             onClick={onClose}
-            style={{ ...inputSt, cursor: 'pointer', padding: '0 16px', background: 'transparent', color: 'var(--fg-2)' }}
+            style={{ ...btnBase, padding: '0 16px', background: 'transparent', color: 'var(--fg-2)' }}
           >
-            Annuler
+            {t('header.pref.cancel')}
           </button>
           <button
             onClick={save}
-            style={{ ...inputSt, cursor: 'pointer', padding: '0 20px', background: 'var(--rgnc-foret-700)', color: '#fff', border: 'none', fontWeight: 600 }}
+            style={{
+              ...btnBase, padding: '0 20px',
+              background: saved ? 'var(--rgnc-success)' : 'var(--rgnc-foret-700)',
+              color: '#fff', border: 'none', fontWeight: 600,
+              transition: 'background 200ms',
+            }}
           >
-            {saved ? '✓ Enregistré' : t('header.pref.save')}
+            {saved ? t('header.pref.saved') : t('header.pref.save')}
           </button>
         </div>
       </div>
@@ -289,12 +304,13 @@ export function Header({
     router.push(ROUTES.LOGIN)
   }
 
-  const initials  = user
+  const initials   = user
     ? (user.nom_complet || user.username).split(' ').map((w) => w[0]).join('').toUpperCase().slice(0, 2)
     : '?'
-  const userName  = user?.nom_complet || user?.username  || 'Agent MINDCAF'
-  const userRole  = user?.role_label  || 'Visiteur'
-  const userExtra = user?.region_nom  ? `· ${user.region_nom}` : ''
+  const userName   = user?.nom_complet || user?.username  || 'Agent MINDCAF'
+  const userRole   = user?.role_label  || 'Visiteur'
+  const userExtra  = user?.region_nom  ? `· ${user.region_nom}` : ''
+  const userPhoto  = (user as any)?.photo_url as string | null | undefined
 
   return (
     <>
@@ -311,10 +327,12 @@ export function Header({
         {/* ── Breadcrumb ── */}
         <div className="hdr-breadcrumb">
           <span>{t('header.breadcrumb.pays')}</span>
-          <span className="sep">›</span>
-          <span>Centre</span>
-          <span className="sep">›</span>
-          <b>Yaoundé · UTM 33N</b>
+          {user?.region_nom && (
+            <>
+              <span className="sep">›</span>
+              <span>{user.region_nom}</span>
+            </>
+          )}
         </div>
 
         {/* ── Recherche ── */}
@@ -343,10 +361,10 @@ export function Header({
           {/* Vue Carte / Liste */}
           <div className="view-switch">
             <button className={`view-switch-btn${view === 'map'  ? ' active' : ''}`} onClick={() => onViewChange('map')}>
-              <Icon name="map"  size={13} /> {t('header.carte')}
+              <Icon name="map"  size={13} /> <span className="vsw-label">{t('header.carte')}</span>
             </button>
             <button className={`view-switch-btn${view === 'list' ? ' active' : ''}`} onClick={() => onViewChange('list')}>
-              <Icon name="list" size={13} /> {t('header.liste')}
+              <Icon name="list" size={13} /> <span className="vsw-label">{t('header.liste')}</span>
             </button>
           </div>
 
@@ -359,8 +377,8 @@ export function Header({
               style={{ position: 'relative' }}
             >
               <Icon name="bell" size={17} />
-              {/* Point rouge = non lues (à brancher sur count réel) */}
-              <span className="hdr-notif-dot" />
+              {/* Point rouge — affiché uniquement s'il y a de vraies notifs non lues */}
+              {/* À brancher sur un useQuery('/notifications/') quand l'API sera prête */}
             </button>
 
             {notifOpen && (
@@ -376,8 +394,23 @@ export function Header({
 
           {/* ── Avatar + menu utilisateur ── */}
           <div style={{ position: 'relative' }} ref={dropRef}>
-            <button className="avatar-btn" title={userName} onClick={() => { setDropOpen((o) => !o); setNotifOpen(false) }}>
-              {initials}
+            <button
+              className="avatar-btn"
+              title={userName}
+              onClick={() => { setDropOpen((o) => !o); setNotifOpen(false) }}
+              style={userPhoto ? { padding: 0, overflow: 'hidden', background: 'var(--border-subtle)' } : undefined}
+            >
+              {userPhoto
+                ? (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img
+                    src={userPhoto}
+                    alt={userName}
+                    style={{ width: '100%', height: '100%', objectFit: 'cover', borderRadius: '50%', display: 'block' }}
+                  />
+                )
+                : initials
+              }
             </button>
 
             {dropOpen && (

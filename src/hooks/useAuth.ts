@@ -14,11 +14,12 @@ interface AuthState {
   isAuthenticated: boolean
   error:         string | null
 
-  login:    (data: ConnexionFormData)    => Promise<void>
-  register: (data: InscriptionFormData) => Promise<void>
-  logout:   () => void
-  loadUser: () => Promise<void>
-  clearError: () => void
+  login:         (data: ConnexionFormData)              => Promise<void>
+  register:      (data: InscriptionFormData)            => Promise<void>
+  logout:        () => void
+  loadUser:      () => Promise<void>
+  updateProfil:  (data: Partial<ProfilUtilisateur>)     => Promise<ProfilUtilisateur>
+  clearError:    () => void
 }
 
 export const useAuth = create<AuthState>((set) => ({
@@ -69,6 +70,21 @@ export const useAuth = create<AuthState>((set) => ({
       set({ user: profil, isAuthenticated: true })
     } catch {
       set({ isAuthenticated: false })
+    }
+  },
+
+  updateProfil: async (data) => {
+    set({ isLoading: true, error: null })
+    try {
+      const updated = await profilApi.update(data)
+      set({ user: updated, isLoading: false })
+      return updated
+    } catch (err: any) {
+      set({
+        error: err.response?.data?.detail || 'Erreur lors de la mise à jour du profil.',
+        isLoading: false,
+      })
+      throw err
     }
   },
 

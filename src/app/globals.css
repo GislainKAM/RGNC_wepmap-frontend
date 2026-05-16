@@ -54,6 +54,8 @@
 *, *::before, *::after { box-sizing: border-box; }
 html, body { height: 100%; margin: 0; padding: 0; }
 body { overflow: hidden; background: var(--bg-app); font-family: var(--font-body); }
+/* Pages hors carte (profil, admin…) : scroll autorisé */
+body:has(.page-scrollable) { overflow: auto; }
 
 /* ── App shell ── */
 .app { display: flex; flex-direction: column; height: 100vh; overflow: hidden; font-family: var(--font-body); }
@@ -298,6 +300,40 @@ body { overflow: hidden; background: var(--bg-app); font-family: var(--font-body
   display: flex; gap: 8px; background: var(--bg-surface); flex-shrink: 0;
 }
 
+/* ── Avatar profil — overlay caméra au survol ── */
+.avatar-trigger { position: relative; cursor: pointer; }
+.avatar-camera-overlay {
+  position: absolute; inset: 0;
+  border-radius: 50%;
+  background: rgba(14, 27, 34, 0.45);
+  display: flex; align-items: center; justify-content: center;
+  color: #fff;
+  opacity: 0;
+  transition: opacity var(--dur-ui);
+  pointer-events: none;
+}
+.avatar-trigger:hover .avatar-camera-overlay { opacity: 1; }
+
+/* ── Filtres localisation : spinner + lien "Effacer" ── */
+.filter-spinner {
+  display: inline-block;
+  width: 10px; height: 10px;
+  border: 1.5px solid var(--border-strong);
+  border-top-color: var(--rgnc-foret-600);
+  border-radius: 50%;
+  animation: spin 0.7s linear infinite;
+  flex-shrink: 0;
+}
+.filter-clear-link {
+  display: inline-flex; align-items: center; gap: 4px;
+  margin-top: 5px;
+  background: none; border: none; padding: 0; cursor: pointer;
+  font-size: 11px; color: var(--fg-3);
+  font-family: var(--font-body);
+  transition: color var(--dur-micro);
+}
+.filter-clear-link:hover { color: var(--rgnc-danger); }
+
 /* ═══════════════════ MAP AREA ═══════════════════ */
 .map-area { flex: 1; position: relative; overflow: hidden; min-width: 0; }
 .map-bg { position: absolute; inset: 0; }
@@ -427,7 +463,9 @@ body { overflow: hidden; background: var(--bg-app); font-family: var(--font-body
 }
 
 /* Animation spin pour l'icône de localisation en cours */
-@keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+@keyframes spin    { from { transform: rotate(0deg); }         to { transform: rotate(360deg); } }
+@keyframes fadeIn  { from { opacity: 0; }                      to { opacity: 1; } }
+@keyframes slideUp { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
 
 .offline-strip {
   position: absolute; top: 16px; left: 50%; transform: translateX(-50%);
@@ -507,6 +545,16 @@ body { overflow: hidden; background: var(--bg-app); font-family: var(--font-body
   overflow: hidden; position: relative;
 }
 .fiche-photo svg { width: 100%; height: 100%; display: block; }
+
+/* Photo terrain réelle — plus haute, curseur zoom */
+.fiche-photo--real { aspect-ratio: 3/2; cursor: zoom-in; }
+.fiche-photo-overlay {
+  position: absolute; inset: 0;
+  background: rgba(14,27,34,0.35);
+  display: flex; align-items: center; justify-content: center;
+  opacity: 0; transition: opacity var(--dur-ui);
+}
+.fiche-photo--real:hover .fiche-photo-overlay { opacity: 1; }
 
 .fiche-history { display: flex; flex-direction: column; gap: 0; }
 .history-item { display: grid; grid-template-columns: 90px 1fr; gap: 10px; padding: 10px 0; border-top: 1px solid var(--border-subtle); }
@@ -702,3 +750,293 @@ body { overflow: hidden; background: var(--bg-app); font-family: var(--font-body
 .ol-viewport { cursor: default; }
 .ol-control { background: none; }
 .ol-control button { display: none; }
+
+/* Backdrop et bouton X filtres : masqués par défaut (desktop), activés par la media query mobile */
+.filters-backdrop { display: none; }
+.filters-close-btn { display: none; }
+
+/* Admin sidebar backdrop + hamburger : masqués par défaut (desktop) */
+.admin-sidebar-backdrop { display: none; }
+.admin-hamburger        { display: none !important; }
+.admin-sidebar {
+  transition: transform var(--dur-panel) var(--ease-out);
+}
+
+/* Valeurs par défaut desktop — contrôlées ici (pas en inline) pour que les media queries puissent les écraser */
+.admin-charts-grid { grid-template-columns: 1fr 1fr; }
+.admin-import-grid { grid-template-columns: 1fr 280px; }
+
+/* Colonne action sticky à droite dans les tables scrollables */
+.admin-col-sticky-right {
+  position: sticky;
+  right: 0;
+  background: var(--bg-surface);
+  z-index: 1;
+  /* Ombre gauche pour marquer la séparation quand la table scrolle */
+  box-shadow: -3px 0 6px rgba(14,27,34,0.06);
+}
+/* Sur les lignes sélectionnées, hériter du fond de sélection */
+tr:has(.admin-col-sticky-right) .admin-col-sticky-right {
+  background: inherit;
+}
+/* Sur hover, hériter du fond hover */
+tr:hover .admin-col-sticky-right {
+  background: var(--bg-sunken);
+}
+
+/* Scroll horizontal silencieux sur toutes les tables admin */
+.admin-card [style*="overflowX"],
+.admin-card > div[style*="overflow"] {
+  -webkit-overflow-scrolling: touch;
+}
+.admin-card [style*="overflowX"]::-webkit-scrollbar { height: 3px; }
+.admin-card [style*="overflowX"]::-webkit-scrollbar-thumb { background: var(--border-subtle); border-radius: 2px; }
+
+/* ═══════════════════ RESPONSIVE — Tablet (≤ 1024px) ═══════════════════ */
+@media (max-width: 1024px) {
+
+  /* Header : compacter la barre */
+  .hdr { padding: 0 12px; gap: 8px; }
+  .hdr-breadcrumb { display: none; }           /* Masqué sur tablette */
+  .hdr-search-wrap { max-width: 260px; margin-left: 0; }
+  .hdr-search { padding: 0 36px 0 32px; }
+  .hdr-search-kbd { display: none; }          /* Masquer le raccourci clavier */
+  .view-switch-btn span { display: none; }    /* Icônes seuls dans view-switch */
+
+  /* Filtres : réduire la largeur */
+  .filters-panel { width: 260px; }
+  .sidebar-toggle { left: 260px; }
+  .sidebar-toggle.collapsed { left: 0; }
+
+  /* Fiche panel : moins large */
+  .fiche-panel { width: 340px; right: 52px; }
+
+  /* Stats strip : scroll horizontal */
+  .stats-strip { overflow-x: auto; flex-wrap: nowrap; }
+  .stats-strip::-webkit-scrollbar { display: none; }
+  .stat-meta { display: none; }
+
+  /* Admin : KPIs 2 colonnes, charts et import empilés dès la tablette */
+  .admin-stat-grid    { grid-template-columns: repeat(2, 1fr); }
+  .admin-charts-grid  { grid-template-columns: 1fr !important; }
+  .admin-import-grid  { grid-template-columns: 1fr !important; }
+
+  /* Login : ajuster illustration */
+  .login-illustration { width: 40%; }
+  .login-tagline { font-size: 26px; }
+}
+
+/* ═══════════════════ RESPONSIVE — Mobile (≤ 768px) ═══════════════════ */
+@media (max-width: 768px) {
+
+  /* ── Header ── */
+  .hdr { height: 52px; padding: 0 12px; gap: 6px; }
+  .hdr-brand img { height: 24px; }
+  .hdr-divider { display: none; }
+  .hdr-breadcrumb { display: none; }
+  .hdr-search-wrap {
+    max-width: none;
+    flex: 1;
+    margin-left: 0;
+  }
+  .hdr-search { padding: 0 10px 0 32px; font-size: 13px; }
+  .hdr-search-kbd { display: none; }
+
+  /* Masquer items non essentiels de la barre droite */
+  .lang-toggle { display: none; }
+
+  /* View switch : icônes seulement */
+  .view-switch-btn { padding: 5px 8px; }
+  .view-switch-btn .vsw-label { display: none; }
+
+  /* Stats strip : scroll horizontal silencieux */
+  .stats-strip {
+    overflow-x: auto; overflow-y: hidden;
+    flex-wrap: nowrap; padding: 0 12px;
+    height: 38px;
+  }
+  .stats-strip::-webkit-scrollbar { display: none; }
+  .stat-item { padding: 0 12px; white-space: nowrap; flex-shrink: 0; }
+  .stat-item:first-child { padding-left: 0; }
+  .stat-meta { display: none; }
+
+  /* ── Layout principal ── */
+  .main { flex-direction: column; }
+
+  /* ── Filtres : drawer depuis la gauche ── */
+  .filters-panel {
+    position: fixed;
+    top: 0; left: 0; bottom: 0;
+    width: min(88vw, 320px);
+    z-index: var(--z-modal);
+    box-shadow: var(--shadow-lg);
+    transform: translateX(0);
+    transition: transform var(--dur-panel) var(--ease-out);
+    border-right: 1px solid var(--border-subtle);
+    overflow: hidden;
+    opacity: 1;
+  }
+  .filters-panel.collapsed {
+    transform: translateX(-105%);
+    /* Annuler les règles desktop qui masquent le panneau via width/opacity */
+    width: min(88vw, 320px);
+    opacity: 1;
+    overflow: hidden;
+  }
+
+  /* Backdrop DOM cliquable derrière le drawer */
+  .filters-backdrop {
+    display: block;
+    position: fixed;
+    inset: 0;
+    background: rgba(14,27,34,0.52);
+    z-index: calc(var(--z-modal) - 1);
+    animation: fadeIn 0.2s ease;
+  }
+
+  /* Bouton X dans le header du drawer — visible sur mobile */
+  .filters-close-btn {
+    display: flex !important;
+    align-items: center; justify-content: center;
+    width: 32px; height: 32px;
+    border-radius: var(--radius-sm);
+    border: none; background: transparent;
+    cursor: pointer; color: var(--fg-3);
+    margin-left: auto;
+    flex-shrink: 0;
+    transition: background var(--dur-micro);
+  }
+  .filters-close-btn:hover { background: var(--bg-sunken); color: var(--fg-1); }
+
+  /* Bouton sidebar toggle : masqué sur mobile (le bouton header suffit) */
+  .sidebar-toggle { display: none; }
+
+  /* ── Fiche panel : bottom sheet ── */
+  .fiche-panel {
+    position: fixed;
+    top: auto; bottom: 0; left: 0; right: 0;
+    width: 100%; max-height: 70vh;
+    border-radius: var(--radius-lg) var(--radius-lg) 0 0;
+    animation: fiche-in-mobile var(--dur-panel) var(--ease-out);
+  }
+  @keyframes fiche-in-mobile {
+    from { opacity: 0; transform: translateY(100%); }
+    to   { opacity: 1; transform: translateY(0); }
+  }
+  /* Poignée tactile sur la fiche */
+  .fiche-header::before {
+    content: '';
+    display: block;
+    width: 36px; height: 4px;
+    background: var(--border-strong);
+    border-radius: 2px;
+    margin: 8px auto 0;
+  }
+
+  /* ── Map toolbar : réduire ── */
+  .map-toolbar { top: 12px; right: 12px; }
+  .map-zoom { bottom: 74px; right: 12px; }
+  .coord-tracker { display: none; }
+  .scalebar { bottom: 12px; font-size: 10px; padding: 4px 10px; }
+  .map-legend { display: none; } /* Trop petit sur mobile */
+
+  /* ── List view ── */
+  .list-toolbar { padding: 10px 16px; }
+  .list-table-wrap { padding: 12px 16px; }
+  .list-table-wrap { overflow-x: auto; }
+
+  /* ── Login : empiler verticalement ── */
+  .login-screen { flex-direction: column; }
+  .login-illustration {
+    width: 100%; flex: 0 0 180px;
+    min-height: 0;
+  }
+  .login-mark { width: 48px; height: 48px; margin-bottom: 16px; }
+  .login-tagline { font-size: 20px; margin: 0 0 8px; }
+  .login-sub { display: none; }
+  .login-quote { padding: 0 24px; }
+  .login-form-wrap { flex: 1; padding: 28px 20px; align-items: flex-start; }
+  .login-cobrand { margin-bottom: 20px; }
+  .login-form h1 { font-size: 22px; }
+
+  /* ── Admin layout : sidebar → drawer ── */
+  .admin-sidebar {
+    position: fixed;
+    top: 0; left: 0; bottom: 0;
+    z-index: var(--z-modal);
+    transform: translateX(-105%);
+    /* Conserver width: 232px pour l'animation glissante */
+  }
+  .admin-sidebar.open {
+    transform: translateX(0);
+  }
+  .admin-sidebar-backdrop {
+    display: block;
+    position: fixed; inset: 0;
+    background: rgba(14,27,34,0.52);
+    z-index: calc(var(--z-modal) - 1);
+    animation: fadeIn 0.2s ease;
+  }
+  /* Hamburger : visible sur mobile */
+  .admin-hamburger { display: flex !important; align-items: center; }
+  /* Masquer le subtitle et la date de la topbar */
+  .admin-topbar-sub  { display: none !important; }
+  .admin-topbar-date { display: none !important; }
+
+  /* ── Admin contenu ── */
+  .admin-stat-grid   { grid-template-columns: repeat(2, 1fr); gap: 10px; }
+  .admin-charts-grid { grid-template-columns: 1fr !important; }
+  .admin-import-grid { grid-template-columns: 1fr !important; }
+  .asc-value { font-size: 22px; }
+  .admin-dropzone { padding: 28px 16px !important; }
+  .admin-dropzone > div:first-of-type { width: 48px !important; height: 48px !important; } /* icône plus petite */
+
+  /* Kanban : scroll horizontal avec colonnes de largeur fixe */
+  .admin-kanban-wrap { -webkit-overflow-scrolling: touch; }
+  .admin-kanban { min-width: 680px; }
+  .admin-kanban-wrap::-webkit-scrollbar { height: 4px; }
+  .admin-kanban-wrap::-webkit-scrollbar-thumb { background: var(--border-subtle); border-radius: 2px; }
+
+  /* Slide-over borne : plein écran */
+  .admin-slideover { width: 100vw !important; }
+
+  /* Main content occupe tout l'écran (sidebar est fixed, pas dans le flux) */
+  .admin-main-content { width: 100%; }
+
+  /* Padding corps */
+  .admin-main-content > main { padding: 16px !important; }
+
+  /* ── Toast : plein bas ── */
+  .toast-container { top: auto; bottom: 16px; right: 12px; left: 12px; }
+  .toast { min-width: 0; max-width: 100%; }
+}
+
+/* ═══════════════════ RESPONSIVE — Profil page ═══════════════════ */
+@media (max-width: 768px) {
+
+  /* Barre nav profil */
+  .profil-nav { height: 48px !important; padding: 0 16px !important; }
+  .profil-nav-breadcrumb { display: none !important; }
+
+  /* Contenu principal : padding réduit */
+  .profil-main { padding: 16px 16px 48px !important; }
+
+  /* Grille 2 colonnes → 1 colonne */
+  .profil-grid {
+    grid-template-columns: 1fr !important;
+  }
+
+  /* Identité dans la section formulaire : 1 colonne */
+  .profil-fields-2col {
+    grid-template-columns: 1fr !important;
+  }
+}
+
+@media (max-width: 480px) {
+  /* Très petits écrans */
+  .hdr-brand img { height: 20px; }
+  .admin-stat-grid { grid-template-columns: 1fr; }
+  .fiche-panel { max-height: 80vh; }
+  .login-illustration { flex: 0 0 140px; }
+  .login-tagline { font-size: 18px; }
+}
