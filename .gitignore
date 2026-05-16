@@ -1,0 +1,28 @@
+# dependencies
+node_modules/
+.pnp
+.pnp.js
+
+# Next.js
+.next/
+out/
+
+# build artifacts
+build/
+tsconfig.tsbuildinfo
+
+# debug logs
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# environment (sensible)
+.env*.local
+!.env.local.example
+
+# Vercel
+.vercel
+
+# IDE
+*.swp
+*.swo

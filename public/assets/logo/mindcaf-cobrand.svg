@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 240 64" fill="none">
+  <rect x="1" y="1" width="62" height="62" rx="6" fill="#F5F1E8" stroke="#0E1B22" stroke-width="1.5"></rect>
+  <path d="M16 44 L20 28 L26 38 L32 24 L38 38 L44 28 L48 44 Z" stroke="#1F5D3A" stroke-width="2" stroke-linejoin="round" fill="none"></path>
+  <line x1="12" y1="48" x2="52" y2="48" stroke="#B85729" stroke-width="2"></line>
+  <text x="76" y="24" font-family="Public Sans, sans-serif" font-size="10" font-weight="600" fill="#0E1B22" letter-spacing="0.5">RÉPUBLIQUE DU CAMEROUN</text>
+  <text x="76" y="40" font-family="Bricolage Grotesque, sans-serif" font-size="16" font-weight="700" fill="#0E1B22">MINDCAF</text>
+  <text x="76" y="54" font-family="Public Sans, sans-serif" font-size="9" fill="#0E1B22" opacity="0.7">Ministère des Domaines, Cadastre et Affaires Foncières</text>
+</svg>
