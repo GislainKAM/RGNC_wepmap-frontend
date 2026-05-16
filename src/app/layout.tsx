@@ -1,6 +1,41 @@
 import type { Metadata } from 'next'
+import {
+  Bricolage_Grotesque,
+  Public_Sans,
+  IBM_Plex_Sans_Condensed,
+  JetBrains_Mono,
+} from 'next/font/google'
 import './globals.css'
 import { Providers } from './providers'
+
+// next/font/google : auto-hébergement au build, font-display:swap, zéro requête tierce
+const bricolage = Bricolage_Grotesque({
+  subsets:  ['latin'],
+  weight:   ['400', '500', '600', '700'],
+  variable: '--font-bricolage',
+  display:  'swap',
+})
+
+const publicSans = Public_Sans({
+  subsets:  ['latin'],
+  weight:   ['400', '500', '600', '700'],
+  variable: '--font-public-sans',
+  display:  'swap',
+})
+
+const ibmPlexCondensed = IBM_Plex_Sans_Condensed({
+  subsets:  ['latin'],
+  weight:   ['400', '500', '600'],
+  variable: '--font-ibm-plex',        // Correspond à var(--font-ibm-plex) dans globals.css
+  display:  'swap',
+})
+
+const jetbrainsMono = JetBrains_Mono({
+  subsets:  ['latin'],
+  weight:   ['400', '500'],
+  variable: '--font-jetbrains',       // Correspond à var(--font-jetbrains) dans globals.css
+  display:  'swap',
+})
 
 export const metadata: Metadata = {
   title: 'RGNC WebMap',
@@ -16,16 +51,11 @@ export default function RootLayout({
   children: React.ReactNode
 }) {
   return (
-    <html lang="fr">
-      <head>
-        {/* Google Fonts chargées côté navigateur — évite le blocage SSL du proxy au build */}
-        <link rel="preconnect" href="https://fonts.googleapis.com" />
-        <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
-        <link
-          href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,400;12..96,500;12..96,600;12..96,700&family=Public+Sans:wght@400;500;600;700&family=IBM+Plex+Sans+Condensed:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap"
-          rel="stylesheet"
-        />
-      </head>
+    <html
+      lang="fr"
+      suppressHydrationWarning
+      className={`${bricolage.variable} ${publicSans.variable} ${ibmPlexCondensed.variable} ${jetbrainsMono.variable}`}
+    >
       <body>
         <Providers>{children}</Providers>
       </body>

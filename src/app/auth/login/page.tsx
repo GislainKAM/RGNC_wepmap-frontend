@@ -42,7 +42,7 @@ export default function LoginPage() {
   }
 
   return (
-    <div className="login-screen">
+    <div className="login-screen" data-nextjs-scroll-focus-boundary>
 
       {/* ── Panneau illustration gauche ── */}
       <div className="login-illustration">

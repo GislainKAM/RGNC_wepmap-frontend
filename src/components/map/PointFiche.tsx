@@ -127,20 +127,40 @@ export function PointFiche({ pointId, onClose, onToast }: PointFicheProps) {
               </>
             )}
           </div>
-          <button className="fiche-close-btn" onClick={onClose} aria-label="Fermer la fiche">
+          <button type="button" className="fiche-close-btn" onClick={onClose} aria-label="Fermer la fiche">
             <Icon name="x" size={15} />
           </button>
         </div>
 
-        {/* Tabs */}
-        <div className="fiche-tabs" role="tablist">
+        {/* Tabs — navigation clavier : ArrowLeft / ArrowRight / Home / End */}
+        <div
+          className="fiche-tabs"
+          role="tablist"
+          onKeyDown={(e) => {
+            const keys = ['ArrowLeft', 'ArrowRight', 'Home', 'End']
+            if (!keys.includes(e.key)) return
+            e.preventDefault()
+            const idx = tabs.findIndex((t) => t.key === activeTab)
+            let next = idx
+            if (e.key === 'ArrowRight') next = (idx + 1) % tabs.length
+            if (e.key === 'ArrowLeft')  next = (idx - 1 + tabs.length) % tabs.length
+            if (e.key === 'Home')       next = 0
+            if (e.key === 'End')        next = tabs.length - 1
+            setActiveTab(tabs[next].key)
+            // Déplacer le focus sur l'onglet activé
+            const tabEls = (e.currentTarget as HTMLDivElement).querySelectorAll<HTMLButtonElement>('[role="tab"]')
+            tabEls[next]?.focus()
+          }}
+        >
           {tabs.map((t) => (
             <button
               key={t.key}
+              type="button"
               className={`fiche-tab${activeTab === t.key ? ' active' : ''}`}
               onClick={() => setActiveTab(t.key)}
               role="tab"
               aria-selected={activeTab === t.key}
+              tabIndex={activeTab === t.key ? 0 : -1}
             >
               {t.label}
             </button>

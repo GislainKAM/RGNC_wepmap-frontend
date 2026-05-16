@@ -54,7 +54,7 @@ export default function RegisterPage() {
 
   if (success) {
     return (
-      <div className="login-screen">
+      <div className="login-screen" data-nextjs-scroll-focus-boundary>
         {/* Panneau gauche même que login */}
         <div className="login-illustration">
           <div className="reticle-bg">
