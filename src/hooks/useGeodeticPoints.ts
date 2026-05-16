@@ -18,12 +18,13 @@ export const QUERY_KEYS = {
   stats:      () => ['points', 'stats'],
 } as const
 
-/** GeoJSON pour OpenLayers — mis en cache 5 minutes */
+/** GeoJSON pour OpenLayers — mis en cache 5 minutes, conservé 15 min */
 export function usePointsGeoJSON(filtres: Partial<FiltresCarteState> = {}) {
   return useQuery({
     queryKey:  QUERY_KEYS.geojson(filtres),
     queryFn:   () => pointApi.geojson(filtres),
-    staleTime: 5 * 60 * 1000,    // 5 min
+    staleTime: 5  * 60 * 1000,
+    gcTime:    15 * 60 * 1000,   // Conserve en mémoire 15 min après inactivité
     retry:     2,
   })
 }
@@ -31,37 +32,43 @@ export function usePointsGeoJSON(filtres: Partial<FiltresCarteState> = {}) {
 /** Liste paginée pour la sidebar */
 export function usePointsList(filtres: Partial<FiltresCarteState> = {}, page = 1) {
   return useQuery({
-    queryKey: QUERY_KEYS.points(filtres),
-    queryFn:  () => pointApi.list(filtres, page),
+    queryKey:  QUERY_KEYS.points(filtres),
+    queryFn:   () => pointApi.list(filtres, page),
     staleTime: 2 * 60 * 1000,
+    gcTime:    8 * 60 * 1000,
   })
 }
 
 /** Détail d'un point sélectionné */
 export function usePointDetail(id: number | null) {
   return useQuery({
-    queryKey: QUERY_KEYS.detail(id!),
-    queryFn:  () => pointApi.detail(id!),
-    enabled:  id !== null,
+    queryKey:  QUERY_KEYS.detail(id!),
+    queryFn:   () => pointApi.detail(id!),
+    enabled:   id !== null,
     staleTime: 10 * 60 * 1000,
+    gcTime:    20 * 60 * 1000,   // Garde les fiches récentes en cache
   })
 }
 
 /** Fiche signalétique (métadonnées PDF) */
 export function useFicheSignaletique(pointId: number | null) {
   return useQuery({
-    queryKey: QUERY_KEYS.fiche(pointId!),
-    queryFn:  () => pointApi.fiche(pointId!),
-    enabled:  pointId !== null,
+    queryKey:  QUERY_KEYS.fiche(pointId!),
+    queryFn:   () => pointApi.fiche(pointId!),
+    enabled:   pointId !== null,
+    staleTime: 10 * 60 * 1000,
+    gcTime:    20 * 60 * 1000,
   })
 }
 
 /** Historique des statuts */
 export function useHistoriqueStatuts(pointId: number | null) {
   return useQuery({
-    queryKey: QUERY_KEYS.historique(pointId!),
-    queryFn:  () => pointApi.historique(pointId!),
-    enabled:  pointId !== null,
+    queryKey:  QUERY_KEYS.historique(pointId!),
+    queryFn:   () => pointApi.historique(pointId!),
+    enabled:   pointId !== null,
+    staleTime: 5 * 60 * 1000,
+    gcTime:    10 * 60 * 1000,
   })
 }
 
@@ -70,7 +77,8 @@ export function useStatsRGNC() {
   return useQuery({
     queryKey:  QUERY_KEYS.stats(),
     queryFn:   () => pointApi.stats(),
-    staleTime: 15 * 60 * 1000,   // 15 min
+    staleTime: 15 * 60 * 1000,
+    gcTime:    30 * 60 * 1000,
   })
 }
 

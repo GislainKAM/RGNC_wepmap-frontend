@@ -134,18 +134,23 @@ export const pointApi = {
    * (transforme le GeoJSON FeatureCollection du backend en réponse standard
    *  afin que la table admin puisse lire data.results directement)
    */
-  list: (filtres?: Partial<FiltresCarteState>, page = 1) =>
+  list: (filtres?: Partial<FiltresCarteState>, page = 1, pageSize = 25) =>
     apiClient
       .get<GeoJSONFeatureCollectionPaginated>('/points/', {
-        params: { ...buildFiltresParams(filtres ?? {}), page, page_size: 25 },
+        params: { ...buildFiltresParams(filtres ?? {}), page, page_size: pageSize },
       })
       .then(r => {
         const d = r.data
         // Extraire les propriétés de chaque Feature GeoJSON → objet plat
-        const results: PointGeodesiqueLight[] = (d.features ?? []).map((f: any) => ({
-          id: f.id ?? f.properties?.id,
-          ...f.properties,
-        }))
+        const results: PointGeodesiqueLight[] = (d.features ?? []).map(
+          (f: GeoJSONFeatureCollection['features'][number] & { id?: number }) => {
+            const props = (f.properties as unknown as Record<string, unknown>) ?? {}
+            return {
+              id: (f.id as number | undefined) ?? (props['id'] as number),
+              ...props,
+            } as unknown as PointGeodesiqueLight
+          }
+        )
         return {
           count:    d.count    ?? 0,
           next:     d.next     ?? null,

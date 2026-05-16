@@ -34,8 +34,9 @@ export function useAdminBornes(
 ) {
   return useQuery({
     queryKey: ADMIN_KEYS.bornes({ ...filtres, page, pageSize }),
-    queryFn:  () => pointApi.list(filtres, page),
+    queryFn:  () => pointApi.list(filtres, page, pageSize),  // pageSize transmis à l'API
     staleTime: 60 * 1000,    // 1 min
+    gcTime:    5 * 60 * 1000,
     placeholderData: (prev) => prev,
   })
 }
@@ -47,6 +48,7 @@ export function useAdminBorneDetail(id: number | null) {
     queryFn:  () => pointApi.detail(id!),
     enabled:  id !== null,
     staleTime: 5 * 60 * 1000,
+    gcTime:   10 * 60 * 1000,
   })
 }
 
@@ -98,8 +100,14 @@ export function useSignalements(params: { statut?: string; page?: number } = {})
   return useQuery({
     queryKey:  ADMIN_KEYS.signalements(params),
     queryFn:   () => signalementApi.list({ ...params, page_size: 50 }),
-    staleTime: 30 * 1000,    // 30 s
-    refetchInterval: 60 * 1000,   // polling 1 min
+    staleTime: 30 * 1000,
+    gcTime:    5 * 60 * 1000,
+    // Polling uniquement quand la fenêtre est active (évite les requêtes en arrière-plan)
+    refetchInterval: (query) =>
+      query.state.status === 'success' && document.visibilityState === 'visible'
+        ? 60 * 1000
+        : false,
+    refetchIntervalInBackground: false,
   })
 }
 
@@ -158,7 +166,13 @@ export function useDemandes(params: { statut?: string } = { statut: 'attente' })
     queryKey:  ADMIN_KEYS.demandes(params),
     queryFn:   () => demandeApi.list(params),
     staleTime: 30 * 1000,
-    refetchInterval: 2 * 60 * 1000,
+    gcTime:    5 * 60 * 1000,
+    // Polling uniquement quand la fenêtre est active
+    refetchInterval: (query) =>
+      query.state.status === 'success' && document.visibilityState === 'visible'
+        ? 2 * 60 * 1000
+        : false,
+    refetchIntervalInBackground: false,
   })
 }
 
