@@ -162,9 +162,32 @@ export const pointApi = {
   fiche: (id: number) =>
     apiClient.get<FicheSignaletique>(`/points/${id}/fiche/`).then(r => r.data),
 
-  /** URL de téléchargement PDF (déclenche le log côté backend) */
-  urlTelechargement: (id: number) =>
-    `${API_URL}/points/${id}/telecharger/`,
+  /**
+   * Télécharge le PDF de la fiche signalétique avec le token JWT.
+   * Utilise fetch() pour envoyer l'header Authorization, puis retourne
+   * une Blob URL à utiliser pour déclencher le téléchargement côté navigateur.
+   * Retourne null si l'utilisateur n'a pas les droits (401/403).
+   */
+  telecharger: async (id: number, matricule: string): Promise<void> => {
+    const token = localStorage.getItem(JWT_ACCESS_KEY)
+    const response = await fetch(`${API_URL}/points/${id}/telecharger/`, {
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+    })
+    if (!response.ok) {
+      const err = await response.json().catch(() => ({}))
+      throw new Error(err?.message ?? `Erreur ${response.status}`)
+    }
+    const blob     = await response.blob()
+    const blobUrl  = URL.createObjectURL(blob)
+    const anchor   = document.createElement('a')
+    anchor.href     = blobUrl
+    anchor.download = `Fiche_RGNC_${matricule}.pdf`
+    document.body.appendChild(anchor)
+    anchor.click()
+    document.body.removeChild(anchor)
+    // Libérer la mémoire après un court délai
+    setTimeout(() => URL.revokeObjectURL(blobUrl), 10_000)
+  },
 
   /** Historique des statuts */
   historique: (id: number) =>

@@ -50,7 +50,9 @@ function CroquisSVG() {
 export function PointFiche({ pointId, onClose, onToast }: PointFicheProps) {
   const [activeTab,        setActiveTab]        = useState<Tab>('coordonnees')
   const [showSignalement,  setShowSignalement]  = useState(false)
-  const isAuth = useAuth((s) => s.isAuthenticated)
+  const [isDownloading,    setIsDownloading]    = useState(false)
+  const isAuth         = useAuth((s) => s.isAuthenticated)
+  const peutTelecharger = useAuth((s) => s.user?.peut_telecharger ?? false)
   const { t, lang } = useLanguage()
   const dateLocale = lang === 'fr' ? frLocale : enUS
 
@@ -67,13 +69,25 @@ export function PointFiche({ pointId, onClose, onToast }: PointFicheProps) {
     })
   }
 
-  const handleDownload = () => {
+  const handleDownload = async () => {
     if (!isAuth) {
       onToast?.(t('fiche.toast.login'), 'warning')
       return
     }
-    const url = pointApi.urlTelechargement(pointId)
-    window.open(url, '_blank')
+    if (!peutTelecharger) {
+      onToast?.(t('fiche.toast.acces_refuse'), 'warning')
+      return
+    }
+    if (!fiche || !point || isDownloading) return
+    setIsDownloading(true)
+    try {
+      await pointApi.telecharger(pointId!, point.matricule)
+      onToast?.(t('fiche.toast.telechargement_ok'), 'success')
+    } catch {
+      onToast?.(t('fiche.toast.telechargement_err'), 'danger')
+    } finally {
+      setIsDownloading(false)
+    }
   }
 
   const tabs: { key: Tab; label: string }[] = [
@@ -359,7 +373,11 @@ export function PointFiche({ pointId, onClose, onToast }: PointFicheProps) {
           <div className="fiche-tab-content">
             <p className="fiche-section-title">{t('fiche.section.pdf')}</p>
             {fiche ? (
-              <div className="fiche-doc-item" onClick={handleDownload}>
+              <div
+                className="fiche-doc-item"
+                onClick={!isDownloading ? handleDownload : undefined}
+                style={{ opacity: isDownloading ? 0.6 : 1, cursor: isDownloading ? 'wait' : 'pointer' }}
+              >
                 <Icon name="file-text" size={20} style={{ color: 'var(--rgnc-foret-700)', flexShrink: 0 }} />
                 <div style={{ flex: 1 }}>
                   <div className="fiche-doc-name">Fiche_{point?.matricule}.pdf</div>
@@ -367,26 +385,34 @@ export function PointFiche({ pointId, onClose, onToast }: PointFicheProps) {
                     v{fiche.version} · {fiche.taille_ko} Ko · {format(new Date(fiche.date_upload), 'dd/MM/yyyy', { locale: dateLocale })}
                   </div>
                 </div>
-                <Icon name="download" size={15} style={{ color: 'var(--fg-3)', flexShrink: 0 }} />
+                {isDownloading
+                  ? <div className="filter-spinner" style={{ width: 14, height: 14, flexShrink: 0 }} />
+                  : <Icon name="download" size={15} style={{ color: 'var(--fg-3)', flexShrink: 0 }} />
+                }
               </div>
             ) : (
               <p style={{ color: 'var(--fg-3)', fontSize: 13 }}>{t('fiche.doc.aucun')}</p>
             )}
 
+            {/* Message selon l'état d'authentification */}
             {!isAuth && (
               <div style={{
-                background: 'var(--rgnc-warning-bg)',
-                border: '1px solid #E0BE5C',
-                borderRadius: 'var(--radius-sm)',
-                padding: '10px 12px',
-                fontSize: 12,
-                color: '#5C4708',
-                display: 'flex',
-                gap: 8,
-                alignItems: 'center',
+                background: 'var(--rgnc-warning-bg)', border: '1px solid #E0BE5C',
+                borderRadius: 'var(--radius-sm)', padding: '10px 12px',
+                fontSize: 12, color: '#5C4708', display: 'flex', gap: 8, alignItems: 'center',
               }}>
                 <Icon name="info" size={14} />
                 {t('fiche.doc.login')}
+              </div>
+            )}
+            {isAuth && !peutTelecharger && (
+              <div style={{
+                background: '#FEF2F2', border: '1px solid #FECACA',
+                borderRadius: 'var(--radius-sm)', padding: '10px 12px',
+                fontSize: 12, color: '#B83434', display: 'flex', gap: 8, alignItems: 'center',
+              }}>
+                <Icon name="info" size={14} />
+                {t('fiche.doc.acces_refuse')}
               </div>
             )}
           </div>
@@ -399,9 +425,16 @@ export function PointFiche({ pointId, onClose, onToast }: PointFicheProps) {
           <Icon name="share" size={13} />
           {t('fiche.btn.partager')}
         </Button>
-        <Button variant="secondary" size="sm" style={{ flex: 1 }} onClick={handleDownload} disabled={!fiche}>
+        <Button
+          variant="secondary"
+          size="sm"
+          style={{ flex: 1 }}
+          onClick={handleDownload}
+          disabled={!fiche || isDownloading || !peutTelecharger}
+          loading={isDownloading}
+        >
           <Icon name="download" size={13} />
-          {t('fiche.btn.pdf')}
+          {isDownloading ? t('fiche.btn.pdf_chargement') : t('fiche.btn.pdf')}
         </Button>
         <Button
           variant="ghost"
