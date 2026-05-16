@@ -1,0 +1,10 @@
+.git
+.gitignore
+node_modules
+.next
+.env*.local
+!.env.local.example
+Dockerfile*
+README.md
+.eslintrc*
+.prettierrc*
