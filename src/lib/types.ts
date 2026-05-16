@@ -235,6 +235,7 @@ export interface StatsRGNC {
   par_statut:         Array<{ statut: StatutBorne; nb: number }>
   par_ordre:          Array<{ ordre: OrdreBorne; nb: number }>
   par_region:         Array<{ region__nom: string | null; region__code: string | null; nb: number }>
+  par_region_ordre:   Array<{ region__code: string | null; ordre: OrdreBorne; nb: number }>
   nb_fiches_pdf:      number
   nb_telechargements: number
 }

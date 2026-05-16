@@ -57,6 +57,8 @@ export type IconName =
   | 'camera'
   | 'trash-2'
   | 'maximize-2'
+  | 'user-check'
+  | 'copy'
 
 interface IconProps {
   name: IconName
@@ -386,6 +388,19 @@ const paths: Record<IconName, React.ReactNode> = {
       <polyline points="9 21 3 21 3 15" />
       <line x1="21" y1="3" x2="14" y2="10" />
       <line x1="3" y1="21" x2="10" y2="14" />
+    </>
+  ),
+  'user-check': (
+    <>
+      <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" />
+      <circle cx="9" cy="7" r="4" />
+      <polyline points="16 11 18 13 22 9" />
+    </>
+  ),
+  copy: (
+    <>
+      <rect x="9" y="9" width="13" height="13" rx="2" ry="2" />
+      <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
     </>
   ),
 }
