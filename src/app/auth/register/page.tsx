@@ -160,7 +160,7 @@ export default function RegisterPage() {
 
             <div className="field">
               <label htmlFor="username">Identifiant *</label>
-              <input id="username" type="text" autoComplete="username" placeholder="jean_dupont" {...register('username')} />
+              <input id="username" type="text" autoComplete="username" autoCapitalize="none" autoCorrect="off" spellCheck="false" placeholder="jean_dupont" {...register('username')} />
               {errors.username && <span style={{ fontSize: 11, color: 'var(--rgnc-danger)', display: 'block', marginTop: 3 }}>{errors.username.message}</span>}
             </div>
 
