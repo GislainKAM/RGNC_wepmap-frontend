@@ -440,7 +440,12 @@ export function MapCanvas({ points, selectedId, onPickPoint }: MapCanvasProps) {
       })
 
       // Fond de carte OSM par défaut
-      const tileLayer = new TileLayer({ source: new OSM(), zIndex: 0 })
+      // tilePixelRatio: adapte les tuiles aux écrans haute densité (mobile Retina/HDPI)
+      const dpr = window.devicePixelRatio || 1
+      const tileLayer = new TileLayer({
+        source: new OSM({ tilePixelRatio: dpr > 1 ? 2 : 1 }),
+        zIndex: 0,
+      })
       tileLayerRef.current = tileLayer
 
       // Zoom initial : préférence utilisateur > constante par défaut
@@ -448,6 +453,7 @@ export function MapCanvas({ points, selectedId, onPickPoint }: MapCanvasProps) {
       const initZoom  = (savedZoom >= MIN_ZOOM && savedZoom <= MAX_ZOOM) ? savedZoom : DEFAULT_ZOOM
 
       // Initialisation de la carte
+      // pixelRatio : essentiel sur mobile (écrans Retina/HDPI) pour éviter le rendu en lignes
       const map = new OlMap({
         target: mapRef.current!,
         layers: [tileLayer, selectionLayer, measureLayer, vectorLayer, locMarkerLayer],
@@ -458,6 +464,7 @@ export function MapCanvas({ points, selectedId, onPickPoint }: MapCanvasProps) {
           maxZoom: MAX_ZOOM,
         }),
         controls: [],
+        pixelRatio: dpr,
       })
       mapInstanceRef.current = map
 
@@ -675,11 +682,13 @@ export function MapCanvas({ points, selectedId, onPickPoint }: MapCanvasProps) {
   useEffect(() => {
     if (!tileLayerRef.current || !olRef.current) return
     const { XYZ, OSM } = olRef.current
+    const dpr2 = window.devicePixelRatio || 1
+    const tPixelRatio = dpr2 > 1 ? 2 : 1
     const url = getBasemapUrl(basemap)
     if (url) {
-      tileLayerRef.current.setSource(new XYZ({ url }))
+      tileLayerRef.current.setSource(new XYZ({ url, tilePixelRatio: tPixelRatio }))
     } else {
-      tileLayerRef.current.setSource(new OSM())
+      tileLayerRef.current.setSource(new OSM({ tilePixelRatio: tPixelRatio }))
     }
   }, [basemap])
 
