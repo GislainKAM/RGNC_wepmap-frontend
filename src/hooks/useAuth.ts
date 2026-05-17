@@ -35,8 +35,9 @@ export const useAuth = create<AuthState>((set) => ({
       const profil = await profilApi.get()
       set({ user: profil, isAuthenticated: true, isLoading: false })
     } catch (err: any) {
+      const responseData = err.response?.data
       set({
-        error: err.response?.data?.detail || 'Identifiants incorrects.',
+        error: responseData?.message || responseData?.detail || 'Identifiants incorrects.',
         isLoading: false,
       })
       throw err
@@ -49,10 +50,18 @@ export const useAuth = create<AuthState>((set) => ({
       await authApi.register(data)
       set({ isLoading: false })
     } catch (err: any) {
-      set({
-        error: err.response?.data?.detail || 'Erreur lors de l\'inscription.',
-        isLoading: false,
-      })
+      const responseData = err.response?.data
+      // Extraire le message d'erreur : message > errors (premier champ) > detail > générique
+      let errorMsg = 'Erreur lors de l\'inscription.'
+      if (responseData?.message) {
+        errorMsg = responseData.message
+      } else if (responseData?.errors) {
+        const firstField = Object.values(responseData.errors)[0] as string[]
+        errorMsg = firstField?.[0] || errorMsg
+      } else if (responseData?.detail) {
+        errorMsg = responseData.detail
+      }
+      set({ error: errorMsg, isLoading: false })
       throw err
     }
   },
