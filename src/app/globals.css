@@ -58,7 +58,9 @@ body { overflow: hidden; background: var(--bg-app); font-family: var(--font-body
 body:has(.page-scrollable) { overflow: auto; }
 
 /* ── App shell ── */
-.app { display: flex; flex-direction: column; height: 100vh; overflow: hidden; font-family: var(--font-body); }
+/* 100dvh : hauteur dynamique qui exclut la barre d'adresse sur mobile */
+/* Fallback 100vh pour les navigateurs qui ne supportent pas dvh */
+.app { display: flex; flex-direction: column; height: 100vh; height: 100dvh; overflow: hidden; font-family: var(--font-body); }
 
 /* ═══════════════════ HEADER ═══════════════════ */
 .hdr {
@@ -830,12 +832,18 @@ tr:hover .admin-col-sticky-right {
 @media (max-width: 768px) {
 
   /* ── Header ── */
-  .hdr { height: 52px; padding: 0 12px; gap: 6px; }
+  /* padding-right inclut la safe area (encoche, coins arrondis) */
+  .hdr {
+    height: 52px;
+    padding: 0 max(12px, env(safe-area-inset-right)) 0 max(12px, env(safe-area-inset-left));
+    gap: 6px;
+  }
+  .hdr-right { flex-shrink: 0; gap: 4px; }
   .hdr-brand img { height: 24px; }
   .hdr-divider { display: none; }
   .hdr-breadcrumb { display: none; }
   .hdr-search-wrap {
-    max-width: none;
+    max-width: 160px;
     flex: 1;
     margin-left: 0;
   }
