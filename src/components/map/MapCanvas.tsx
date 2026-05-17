@@ -264,6 +264,7 @@ export function MapCanvas({ points, selectedId, onPickPoint }: MapCanvasProps) {
   const [measureText,       setMeasureText]        = useState<string | null>(null)
   const [locating,          setLocating]           = useState(false)
   const [isOffline,         setIsOffline]          = useState(false)
+  const [tilesLoading,      setTilesLoading]       = useState(false)
 
   // ── 1. Initialisation de la carte ──────────────────────────────
 
@@ -440,16 +441,23 @@ export function MapCanvas({ points, selectedId, onPickPoint }: MapCanvasProps) {
       })
 
       // Fond de carte OSM par défaut
-      const dpr = window.devicePixelRatio || 1
-      const tileLayer = new TileLayer({ source: new OSM(), zIndex: 0 })
+      // preload: 2  → pré-charge les tuiles des 2 niveaux de zoom adjacents (moins de blanc au zoom)
+      // transition: 0 → tuiles apparaissent immédiatement sans fondu (meilleur sur connexion lente)
+      const tileLayer = new TileLayer({
+        source: new OSM(),
+        zIndex: 0,
+        preload: 2,
+        useInterimTilesOnError: true,   // affiche les vieilles tuiles pendant le rechargement
+      })
       tileLayerRef.current = tileLayer
 
       // Zoom initial : préférence utilisateur > constante par défaut
       const savedZoom = Number(localStorage.getItem('rgnc-pref-zoom') || DEFAULT_ZOOM)
       const initZoom  = (savedZoom >= MIN_ZOOM && savedZoom <= MAX_ZOOM) ? savedZoom : DEFAULT_ZOOM
 
-      // Initialisation de la carte
-      // pixelRatio : essentiel sur mobile (écrans Retina/HDPI) pour éviter le rendu en lignes
+      // pixelRatio : limité à 2 max (évite un canvas 9× trop grand sur écrans 3× qui ralentit le rendu)
+      const dpr = Math.min(window.devicePixelRatio || 1, 2)
+
       const map = new OlMap({
         target: mapRef.current!,
         layers: [tileLayer, selectionLayer, measureLayer, vectorLayer, locMarkerLayer],
@@ -463,6 +471,11 @@ export function MapCanvas({ points, selectedId, onPickPoint }: MapCanvasProps) {
         pixelRatio: dpr,
       })
       mapInstanceRef.current = map
+
+      // ── Indicateur de chargement des tuiles ──────────────────────
+      tileLayer.getSource()?.on('tileloadstart', () => setTilesLoading(true))
+      tileLayer.getSource()?.on('tileloadend',   () => setTilesLoading(false))
+      tileLayer.getSource()?.on('tileloaderror', () => setTilesLoading(false))
 
       // ── Race condition : si les données étaient déjà disponibles pendant l'init async ──
       // (TanStack Query retourne le cache instantanément au 2e passage sur la page,
@@ -684,6 +697,7 @@ export function MapCanvas({ points, selectedId, onPickPoint }: MapCanvasProps) {
     } else {
       tileLayerRef.current.setSource(new OSM())
     }
+    tileLayerRef.current.set('preload', 2)
   }, [basemap])
 
   // ── 5. Outil mesure — ajout/retrait de l'interaction Draw ─────
@@ -803,6 +817,20 @@ export function MapCanvas({ points, selectedId, onPickPoint }: MapCanvasProps) {
         <div className="offline-strip">
           <Icon name="wifi-off" size={14} />
           Mode hors-ligne — tuiles en cache uniquement
+        </div>
+      )}
+
+      {/* Indicateur de chargement des tuiles */}
+      {tilesLoading && !isOffline && (
+        <div style={{
+          position: 'absolute', bottom: 44, left: '50%', transform: 'translateX(-50%)',
+          background: 'rgba(0,0,0,0.55)', color: '#fff',
+          fontSize: 11, padding: '4px 10px', borderRadius: 12,
+          display: 'flex', alignItems: 'center', gap: 6, zIndex: 10, pointerEvents: 'none',
+        }}>
+          <span style={{ width: 8, height: 8, borderRadius: '50%', background: '#4ade80',
+            animation: 'pulse 1s infinite' }} />
+          Chargement de la carte…
         </div>
       )}
 
