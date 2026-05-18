@@ -848,8 +848,27 @@ tr:hover .admin-col-sticky-right {
     flex: 1;
     margin-left: 0;
   }
-  .hdr-search { padding: 0 10px 0 32px; font-size: 13px; }
+  /* font-size: 16px → empêche le zoom automatique iOS sur les inputs focalisés  */
+  /* (iOS zoome si font-size < 16px → décale la carte, masque le texte saisi)    */
+  .hdr-search {
+    padding: 0 10px 0 32px;
+    font-size: 16px;
+    height: 36px;
+    -webkit-text-fill-color: var(--fg-1);  /* iOS ne peut pas écraser la couleur */
+  }
   .hdr-search-kbd { display: none; }
+
+  /* ── Recherche mobile : plein écran quand l'input est actif ── */
+  /* :has() est supporté sur iOS 16+, Chrome Android 105+         */
+  .hdr:has(.hdr-search:focus) {
+    /* Le header devient une barre de recherche pure */
+  }
+  .hdr:has(.hdr-search:focus) .hdr-brand  { display: none; }
+  .hdr:has(.hdr-search:focus) .hdr-right  { display: none; }
+  .hdr:has(.hdr-search:focus) .hdr-search-wrap {
+    max-width: none;
+    flex: 1;
+  }
 
   /* Masquer items non essentiels de la barre droite */
   .lang-toggle { display: none; }
@@ -1050,9 +1069,6 @@ tr:hover .admin-col-sticky-right {
 
   /* Marque : peut rétrécir pour céder de la place à hdr-right */
   .hdr-brand { flex-shrink: 1; min-width: 0; overflow: hidden; }
-
-  /* Barre de recherche : plus compacte sur très petits écrans */
-  .hdr-search-wrap { max-width: 100px; }
 
   .admin-stat-grid { grid-template-columns: 1fr; }
   .fiche-panel { max-height: 80vh; }
