@@ -1044,6 +1044,16 @@ tr:hover .admin-col-sticky-right {
 @media (max-width: 480px) {
   /* Très petits écrans */
   .hdr-brand img { height: 20px; }
+
+  /* Cloche notifications : masquée sur mobile (<480px) — libère ~36px pour l'avatar */
+  .hdr-notif-wrap { display: none !important; }
+
+  /* Marque : peut rétrécir pour céder de la place à hdr-right */
+  .hdr-brand { flex-shrink: 1; min-width: 0; overflow: hidden; }
+
+  /* Barre de recherche : plus compacte sur très petits écrans */
+  .hdr-search-wrap { max-width: 100px; }
+
   .admin-stat-grid { grid-template-columns: 1fr; }
   .fiche-panel { max-height: 80vh; }
   .login-illustration { flex: 0 0 140px; }

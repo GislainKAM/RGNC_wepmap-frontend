@@ -369,7 +369,7 @@ export function Header({
           </div>
 
           {/* ── Notifications ── */}
-          <div style={{ position: 'relative' }} ref={notifRef}>
+          <div className="hdr-notif-wrap" style={{ position: 'relative' }} ref={notifRef}>
             <button
               className="hdr-icon-btn"
               title={t('header.notifications')}

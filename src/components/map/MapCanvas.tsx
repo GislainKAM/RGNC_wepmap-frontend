@@ -441,13 +441,15 @@ export function MapCanvas({ points, selectedId, onPickPoint }: MapCanvasProps) {
       })
 
       // Fond de carte OSM par défaut
-      // preload: 2  → pré-charge les tuiles des 2 niveaux de zoom adjacents (moins de blanc au zoom)
-      // transition: 0 → tuiles apparaissent immédiatement sans fondu (meilleur sur connexion lente)
+      // preload: 2       → pré-charge les tuiles des 2 niveaux de zoom adjacents (moins de blanc au zoom)
+      // transition: 0    → tuiles apparaissent immédiatement sans fondu (évite les bandes grises)
+      // useInterimTiles  → affiche les vieilles tuiles pendant le rechargement (navigation fluide)
       const tileLayer = new TileLayer({
         source: new OSM(),
         zIndex: 0,
-        preload: 2,
-        useInterimTilesOnError: true,   // affiche les vieilles tuiles pendant le rechargement
+        preload: 4,            // pré-charge 4 niveaux de zoom (plus agressif sur mobile)
+        transition: 0,         // pas de fondu → tuiles apparaissent instantanément
+        useInterimTilesOnError: true,
       })
       tileLayerRef.current = tileLayer
 
@@ -561,6 +563,20 @@ export function MapCanvas({ points, selectedId, onPickPoint }: MapCanvasProps) {
       setIsOffline(!navigator.onLine)
       window.addEventListener('online',  () => setIsOffline(false))
       window.addEventListener('offline', () => setIsOffline(true))
+
+      // ── Resize : recalcul du canvas OL quand le conteneur change de taille ──
+      // Sur mobile, la barre d'adresse se rétracte en scrollant → le div carte
+      // change de hauteur SANS déclencher window.resize → OL conserve l'ancien
+      // canvas → bandes horizontales grises / tuiles décalées.
+      // ResizeObserver cible directement le div cible (mapRef.current).
+      const resizeObserver = new ResizeObserver(() => {
+        mapInstanceRef.current?.updateSize()
+      })
+      if (mapRef.current) resizeObserver.observe(mapRef.current)
+
+      // Fallback window.resize (Safari < 13, ou navigation desktop)
+      const onWindowResize = () => mapInstanceRef.current?.updateSize()
+      window.addEventListener('resize', onWindowResize)
 
     }
 
@@ -693,11 +709,11 @@ export function MapCanvas({ points, selectedId, onPickPoint }: MapCanvasProps) {
     const { XYZ, OSM } = olRef.current
     const url = getBasemapUrl(basemap)
     if (url) {
-      tileLayerRef.current.setSource(new XYZ({ url }))
+      tileLayerRef.current.setSource(new XYZ({ url, transition: 0 }))
     } else {
-      tileLayerRef.current.setSource(new OSM())
+      tileLayerRef.current.setSource(new OSM({ transition: 0 }))
     }
-    tileLayerRef.current.set('preload', 2)
+    tileLayerRef.current.set('preload', 4)
   }, [basemap])
 
   // ── 5. Outil mesure — ajout/retrait de l'interaction Draw ─────
