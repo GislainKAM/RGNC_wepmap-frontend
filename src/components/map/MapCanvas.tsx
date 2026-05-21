@@ -447,8 +447,7 @@ export function MapCanvas({ points, selectedId, onPickPoint }: MapCanvasProps) {
       const tileLayer = new TileLayer({
         source: new OSM(),
         zIndex: 0,
-        preload: 4,            // pré-charge 4 niveaux de zoom (plus agressif sur mobile)
-        transition: 0,         // pas de fondu → tuiles apparaissent instantanément
+        preload: 4,
         useInterimTilesOnError: true,
       })
       tileLayerRef.current = tileLayer
@@ -709,9 +708,9 @@ export function MapCanvas({ points, selectedId, onPickPoint }: MapCanvasProps) {
     const { XYZ, OSM } = olRef.current
     const url = getBasemapUrl(basemap)
     if (url) {
-      tileLayerRef.current.setSource(new XYZ({ url, transition: 0 }))
+      tileLayerRef.current.setSource(new XYZ({ url }))
     } else {
-      tileLayerRef.current.setSource(new OSM({ transition: 0 }))
+      tileLayerRef.current.setSource(new OSM())
     }
     tileLayerRef.current.set('preload', 4)
   }, [basemap])
