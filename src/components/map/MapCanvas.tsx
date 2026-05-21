@@ -26,6 +26,14 @@ const STATUT_COLORS: Record<string, string> = {
   detruit: '#B83434',
   inconnu: '#9BA5AC',
 }
+
+// ── Cache SVG markers ────────────────────────────────────────────
+// La fonction style OL est rappelée à CHAQUE frame pour CHAQUE feature.
+// Sans cache, on génère + encode un nouveau SVG 50-100× par frame sur mobile
+// → le thread JS est bloqué → les tuiles restent grises en attendant.
+// Avec cache : ~24 entrées marker + ~N entrées cluster → quasiment 0 coût.
+const _svgMarkerCache    = new Map<string, string>()
+const _svgClusterCache   = new Map<string, string>()
 // ── Moteur de clustering par groupe (ordre + statut) ─────────────
 //
 // `ol/source/Cluster` ne filtre pas par attribut — on l'implémente manuellement.
@@ -129,6 +137,9 @@ function makeLocMarkerSvg(): string {
 //  • Ancre centre géométrique (anchor: [0.5, 0.5])
 
 function makeSvgMarker(ordre: number, color: string, selected: boolean): string {
+  const cacheKey = `${ordre}|${color}|${selected}`
+  if (_svgMarkerCache.has(cacheKey)) return _svgMarkerCache.get(cacheKey)!
+
   const S   = selected ? 26 : 20
   const cx  = S / 2
   const cy  = S / 2
@@ -171,13 +182,18 @@ function makeSvgMarker(ordre: number, color: string, selected: boolean): string 
   }
 
   const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${S}" height="${S}" viewBox="0 0 ${S} ${S}">${shape}</svg>`
-  return 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svg)
+  const result = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svg)
+  _svgMarkerCache.set(cacheKey, result)
+  return result
 }
 
 // ── Cluster helper ─────────────────────────────────────────────────
 // Même forme que le marqueur individuel (ordre → triangle/losange/cercle),
 // même couleur (statut), avec le nombre d'éléments agrégés inscrit à l'intérieur.
 function makeClusterMarkerSvg(ordre: number, color: string, count: number): string {
+  const cacheKey = `${ordre}|${color}|${count}`
+  if (_svgClusterCache.has(cacheKey)) return _svgClusterCache.get(cacheKey)!
+
   // Taille plus grande que le marqueur simple pour absorber le texte
   const S   = count < 10 ? 32 : count < 100 ? 38 : 44
   const cx  = S / 2, cy = S / 2
@@ -216,7 +232,9 @@ function makeClusterMarkerSvg(ordre: number, color: string, count: number): stri
       paint-order="stroke" stroke="rgba(0,0,0,0.25)" stroke-width="2">${count}</text>`
 
   const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${S}" height="${S}" viewBox="0 0 ${S} ${S}">${shape}${text}</svg>`
-  return 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svg)
+  const result = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svg)
+  _svgClusterCache.set(cacheKey, result)
+  return result
 }
 
 // ── Rayon de l'anneau de sélection (en mètres, EPSG:3857) ────────
@@ -347,6 +365,9 @@ export function MapCanvas({ points, selectedId, onPickPoint }: MapCanvasProps) {
       const vectorLayer = new VectorLayer({
         source: displaySource,
         zIndex: 10,
+        // Ne pas re-rendre pendant les animations/interactions → tuiles restent nettes
+        updateWhileAnimating:   false,
+        updateWhileInteracting: false,
         style: (feature: any) => {
           const members = feature.get('_members') as any[] | undefined
           const size    = feature.get('_size')    as number ?? 1
