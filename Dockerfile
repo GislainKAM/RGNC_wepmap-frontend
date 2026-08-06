@@ -8,7 +8,14 @@ FROM node:20-alpine AS deps
 RUN apk add --no-cache libc6-compat
 WORKDIR /app
 COPY package.json package-lock.json* ./
-RUN npm ci --only=production
+# Installation COMPLÈTE, devDependencies incluses : l'étape "builder"
+# réutilise ce node_modules pour lancer `next build`, qui a besoin de
+# typescript, tailwindcss, postcss et autoprefixer — tous en
+# devDependencies. Avec `--only=production`, le build échoue.
+# Cela n'alourdit pas l'image finale : le mode standalone de Next.js ne
+# copie dans l'étage "runner" que le serveur autonome et les dépendances
+# réellement importées par le code.
+RUN npm ci
 
 # ── Étape 2 : build ─────────────────────────────────────────────
 FROM node:20-alpine AS builder
