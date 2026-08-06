@@ -104,3 +104,29 @@ jobs:
             exit 1
           fi
           echo "OK — URL de l'API inlinee (trouvee dans $found)"
+
+  # ── Déploiement sur le serveur WebSIG ────────────────────────────────
+  #
+  # Ne démarre que si la publication a réussi (needs:), contrôle du bundle
+  # compris. Une image dont l'URL d'API n'aurait pas été inlinée n'atteint
+  # donc jamais le serveur.
+  deployer:
+    needs: build-and-push
+    runs-on: ubuntu-latest
+    steps:
+      - name: Preparer la cle SSH
+        run: |
+          mkdir -p ~/.ssh && chmod 700 ~/.ssh
+          echo "${{ secrets.DEPLOY_SSH_KEY }}" > ~/.ssh/id_ed25519
+          chmod 600 ~/.ssh/id_ed25519
+          # Empreinte du serveur enregistree une fois pour toutes. Sans
+          # elle, il faudrait desactiver la verification de l'hote et la CI
+          # accepterait n'importe quelle machine repondant a cette adresse.
+          echo "${{ secrets.DEPLOY_KNOWN_HOSTS }}" > ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/known_hosts
+
+      # La cle est enregistree cote serveur avec une "forced command" :
+      # quelle que soit la commande envoyee ici, c'est /srv/projects/rgnc/
+      # deploy.sh qui s'execute. D'ou le "true", qui n'est jamais evalue.
+      - name: Declencher deploy.sh
+        run: ssh -i ~/.ssh/id_ed25519 -o BatchMode=yes deploy@${{ secrets.DEPLOY_HOST }} true
