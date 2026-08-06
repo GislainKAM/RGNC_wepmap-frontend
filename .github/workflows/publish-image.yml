@@ -118,13 +118,17 @@ jobs:
         run: |
           mkdir -p ~/.ssh && chmod 700 ~/.ssh
 
-          # printf '%s\n' plutot que echo : garantit le saut de ligne final,
-          # sans lequel OpenSSL refuse la cle ("error in libcrypto").
-          # tr -d '\r' : supprime les retours chariot Windows introduits en
-          # collant la cle dans l'interface GitHub depuis un terminal
-          # Windows. Invisibles a l'oeil, ils suffisent a rendre la cle
-          # illisible.
-          printf '%s\n' "${{ secrets.DEPLOY_SSH_KEY }}" | tr -d '\r' > ~/.ssh/id_ed25519
+          # La cle est stockee en base64 (secret DEPLOY_SSH_KEY_B64), produit
+          # par :  sudo base64 -w0 /home/deploy/.ssh/deploy_key
+          #
+          # Pourquoi pas la cle en clair : une cle PEM fait une trentaine de
+          # lignes, et le moindre accident de transcription la rend
+          # inutilisable — retour chariot Windows ajoute au collage, saut de
+          # ligne final manquant, troncature. Tous invisibles a l'oeil, et
+          # tous se manifestant par un "error in libcrypto" qui n'indique pas
+          # la cause. Le base64 est une chaine d'une seule ligne, sans
+          # caractere que le presse-papier puisse abimer.
+          printf '%s' "${{ secrets.DEPLOY_SSH_KEY_B64 }}" | tr -d '\r\n' | base64 -d > ~/.ssh/id_ed25519
           chmod 600 ~/.ssh/id_ed25519
 
           # Valide la cle AVANT de tenter la connexion. Sans ce controle,
@@ -132,7 +136,7 @@ jobs:
           # (publickey)" cote serveur, qui fait chercher du cote des droits
           # ou de authorized_keys alors que le probleme est ici.
           if ! ssh-keygen -y -f ~/.ssh/id_ed25519 > /dev/null 2>&1; then
-            echo "::error::DEPLOY_SSH_KEY est malformee. Verifier qu'elle a ete collee en entier, de '-----BEGIN OPENSSH PRIVATE KEY-----' a '-----END OPENSSH PRIVATE KEY-----' inclus."
+            echo "::error::DEPLOY_SSH_KEY_B64 ne contient pas une cle valide. La regenerer avec : sudo base64 -w0 /home/deploy/.ssh/deploy_key"
             exit 1
           fi
 
