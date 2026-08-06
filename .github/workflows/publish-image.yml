@@ -117,12 +117,29 @@ jobs:
       - name: Preparer la cle SSH
         run: |
           mkdir -p ~/.ssh && chmod 700 ~/.ssh
-          echo "${{ secrets.DEPLOY_SSH_KEY }}" > ~/.ssh/id_ed25519
+
+          # printf '%s\n' plutot que echo : garantit le saut de ligne final,
+          # sans lequel OpenSSL refuse la cle ("error in libcrypto").
+          # tr -d '\r' : supprime les retours chariot Windows introduits en
+          # collant la cle dans l'interface GitHub depuis un terminal
+          # Windows. Invisibles a l'oeil, ils suffisent a rendre la cle
+          # illisible.
+          printf '%s\n' "${{ secrets.DEPLOY_SSH_KEY }}" | tr -d '\r' > ~/.ssh/id_ed25519
           chmod 600 ~/.ssh/id_ed25519
+
+          # Valide la cle AVANT de tenter la connexion. Sans ce controle,
+          # une cle malformee se manifeste par un "Permission denied
+          # (publickey)" cote serveur, qui fait chercher du cote des droits
+          # ou de authorized_keys alors que le probleme est ici.
+          if ! ssh-keygen -y -f ~/.ssh/id_ed25519 > /dev/null 2>&1; then
+            echo "::error::DEPLOY_SSH_KEY est malformee. Verifier qu'elle a ete collee en entier, de '-----BEGIN OPENSSH PRIVATE KEY-----' a '-----END OPENSSH PRIVATE KEY-----' inclus."
+            exit 1
+          fi
+
           # Empreinte du serveur enregistree une fois pour toutes. Sans
           # elle, il faudrait desactiver la verification de l'hote et la CI
           # accepterait n'importe quelle machine repondant a cette adresse.
-          echo "${{ secrets.DEPLOY_KNOWN_HOSTS }}" > ~/.ssh/known_hosts
+          printf '%s\n' "${{ secrets.DEPLOY_KNOWN_HOSTS }}" | tr -d '\r' > ~/.ssh/known_hosts
           chmod 600 ~/.ssh/known_hosts
 
       # La cle est enregistree cote serveur avec une "forced command" :
