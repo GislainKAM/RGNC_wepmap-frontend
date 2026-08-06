@@ -1,0 +1,106 @@
+# Construit l'image Docker du frontend et la publie sur GHCR
+# (GitHub Container Registry), d'où le serveur WebSIG la récupère.
+#
+# Le serveur ne construit jamais d'image lui-même : `next build` est
+# gourmand en RAM, et le VPS partage ses 12 Go entre tous les projets.
+name: Publier l'image sur GHCR
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+env:
+  REGISTRY: ghcr.io
+  # En minuscules et en dur : GHCR refuse les noms d'image comportant des
+  # majuscules, or github.repository_owner vaut "GislainKAM". Doit rester
+  # identique au docker-compose.yml versionné dans websig-docs (infra/rgnc/).
+  IMAGE_NAME: gislainkam/rgnc-frontend
+
+  # ── Variables inlinées dans le bundle JavaScript au moment du build ──
+  #
+  # Ce ne sont PAS des secrets : elles finissent dans le code téléchargé par
+  # chaque visiteur. D'où des "repository variables" (vars.*) avec un défaut
+  # explicite ici, plutôt que des secrets — le fichier reste lisible sans
+  # aller consulter les réglages GitHub.
+  #
+  # Elles sont figées au build : les changer impose de RECONSTRUIRE l'image,
+  # pas de redémarrer le conteneur.
+  #
+  # NEXT_PUBLIC_API_URL doit être joignable DEPUIS LE NAVIGATEUR du visiteur.
+  # Surtout pas un nom de service Docker interne (http://backend:8000/api) :
+  # tous les appels au backend partent de composants client ('use client'),
+  # jamais du serveur Next.js. Pas de slash final — src/lib/api.ts concatène
+  # des chemins du type /points/42/telecharger/.
+  API_URL: ${{ vars.NEXT_PUBLIC_API_URL || 'https://rgnc-api.websig.app/api' }}
+  # Hostname seul (sans https://) — consommé par next.config.js pour
+  # autoriser les images distantes servies par Django.
+  BACKEND_HOSTNAME: ${{ vars.NEXT_PUBLIC_BACKEND_HOSTNAME || 'rgnc-api.websig.app' }}
+
+jobs:
+  build-and-push:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      # Sans cette permission, le push échoue en 403.
+      packages: write
+
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Configurer Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: S'authentifier sur GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Calculer les tags
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          # "sha-<court>" permet de revenir à la version précédente en
+          # changeant une seule ligne du compose, sans rien reconstruire.
+          tags: |
+            type=raw,value=latest
+            type=sha,prefix=sha-,format=short
+
+      - name: Construire et publier
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          build-args: |
+            NEXT_PUBLIC_API_URL=${{ env.API_URL }}
+            NEXT_PUBLIC_BACKEND_HOSTNAME=${{ env.BACKEND_HOSTNAME }}
+            NEXT_PUBLIC_APP_NAME=RGNC WebMap
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      # Contrôle indispensable, et pas seulement du confort.
+      #
+      # src/lib/constants.ts définit un repli :
+      #   API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000/api'
+      # Si le build-arg n'est pas transmis, le build RÉUSSIT et l'image
+      # publiée pointe silencieusement vers localhost:8000 depuis le
+      # navigateur du visiteur. L'application est inutilisable, sans le
+      # moindre message d'erreur nulle part. On vérifie donc que l'URL
+      # attendue est réellement présente dans le bundle produit.
+      - name: Vérifier que l'URL de l'API est bien inlinée dans le bundle
+        run: |
+          set -e
+          hostname="${BACKEND_HOSTNAME}"
+          found=$(docker run --rm --entrypoint sh \
+            "${REGISTRY}/${IMAGE_NAME}:latest" \
+            -c "grep -rl '${hostname}' .next/static 2>/dev/null | head -1" || true)
+          if [ -z "$found" ]; then
+            echo "::error::'${hostname}' est absent du bundle : le build-arg NEXT_PUBLIC_API_URL n'a pas ete pris en compte. L'image pointe vers localhost:8000."
+            exit 1
+          fi
+          echo "OK — URL de l'API inlinee (trouvee dans $found)"
