@@ -3,6 +3,7 @@
 import React, { useCallback, useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { Icon } from '@/components/ui/Icon'
+import { SkipLink, ANCRE_CONTENU } from '@/components/ui/SkipLink'
 import { useAuth } from '@/hooks/useAuth'
 import { useLanguage } from '@/hooks/useLanguage'
 import { useSignalements, useDemandes } from '@/hooks/useAdmin'
@@ -75,6 +76,7 @@ export default function AdminPage() {
 
   return (
     <div className="admin-layout" style={{ display: 'flex', height: '100vh', overflow: 'hidden', background: 'var(--bg-app)', fontFamily: 'var(--font-body)' }}>
+      <SkipLink />
 
       {/* ── Backdrop mobile sidebar ── */}
       {sidebarOpen && (
@@ -146,7 +148,7 @@ export default function AdminPage() {
         </div>
 
         {/* Corps */}
-        <main style={{ flex: 1, overflowY: 'auto', padding: '24px 28px' }}>
+        <main id={ANCRE_CONTENU} tabIndex={-1} style={{ flex: 1, overflowY: 'auto', padding: '24px 28px' }}>
           {section === 'dashboard'    && <SectionDashboard    onGoTo={setSection} onToast={toast} />}
           {section === 'bornes'       && <SectionBornes       onToast={toast} />}
           {section === 'signalements' && <SectionSignalements onToast={toast} />}

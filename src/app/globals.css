@@ -72,7 +72,12 @@
  * qu'il n'a pas le focus. Permet d'atteindre le contenu sans traverser
  * l'en-tête et les filtres à chaque changement de page. */
 .skip-link {
-  position: absolute;
+  /* `fixed` et non `absolute` : ses deux conteneurs (.app et .admin-layout)
+   * portent overflow:hidden. En absolu, le lien n'échappe au rognage que
+   * tant qu'aucun des deux n'est positionné — il suffirait d'ajouter un
+   * position:relative à l'un d'eux pour le faire disparaître sans que rien
+   * ne le signale, puisqu'il n'est visible qu'au clavier. */
+  position: fixed;
   left: -9999px;
   top: 0;
   z-index: var(--z-toast);
@@ -477,6 +482,26 @@ body:has(.page-scrollable) { overflow: auto; }
 }
 .map-zoom-btn:hover { background: var(--bg-sunken); color: var(--fg-1); }
 
+/* Cibles tactiles de la barre d'outils carte.
+ *
+ * 36 px (outils) et 32 px (zoom) conviennent à la souris mais pas au doigt :
+ * le minimum retenu est 44 px (WCAG 2.5.5 / recommandations Apple et Google).
+ * Le géomètre manipule la carte dehors, souvent d'une seule main et parfois
+ * avec des gants — une cible trop petite se traduit par un zoom raté ou un
+ * changement de fond de plan involontaire.
+ *
+ * Le critère est `pointer: coarse` et non la largeur d'écran : c'est le
+ * moyen de pointage qui impose la taille, pas la taille de l'écran. Une
+ * tablette de terrain de 1024 px reste tactile, tandis qu'une fenêtre de
+ * navigateur étroite sur poste fixe garde à juste titre les petites cibles.
+ *
+ * Seule la zone cliquable grandit : les icônes gardent leur taille, fixée
+ * côté composant. */
+@media (pointer: coarse) {
+  .map-tool-btn { width: 44px; height: 44px; }
+  .map-zoom-btn { width: 44px; height: 44px; font-size: 22px; }
+}
+
 .scalebar {
   position: absolute; bottom: 16px; left: 50%; transform: translateX(-50%);
   display: flex; align-items: center; gap: 10px;
@@ -555,6 +580,29 @@ body:has(.page-scrollable) { overflow: auto; }
   box-shadow: var(--shadow-sm); z-index: var(--z-map-ui);
 }
 
+/* Bandeau d'échec de géolocalisation.
+ * Décalé de 16 px sous .offline-strip : hors couverture réseau, les deux
+ * conditions se produisent volontiers ensemble et se superposeraient. */
+.geo-error-strip {
+  position: absolute; top: 56px; left: 50%; transform: translateX(-50%);
+  max-width: min(420px, calc(100% - 32px));
+  background: var(--rgnc-danger-bg); border: 1px solid #D9A79C; color: #7A2E1C;
+  padding: 8px 8px 8px 14px; border-radius: var(--radius-pill);
+  font-size: 12px; font-weight: 500; line-height: 1.35;
+  display: inline-flex; align-items: center; gap: 8px;
+  box-shadow: var(--shadow-sm); z-index: var(--z-map-ui);
+}
+.geo-error-close {
+  flex: none;
+  width: 24px; height: 24px; border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  background: transparent; border: none; color: inherit; cursor: pointer;
+}
+.geo-error-close:hover { background: rgba(122,46,28,0.12); }
+@media (pointer: coarse) {
+  .geo-error-close { width: 32px; height: 32px; }
+}
+
 /* Collapse toggle */
 .sidebar-toggle {
   position: absolute; top: 50%; left: 300px; transform: translate(-50%, -50%);
@@ -609,6 +657,21 @@ body:has(.page-scrollable) { overflow: auto; }
 .fiche-kv-item .k { font-size: 10px; letter-spacing: 0.04em; text-transform: uppercase; color: var(--fg-3); }
 .fiche-kv-item .v { font-family: var(--font-mono); font-size: 13px; color: var(--fg-1); margin-top: 2px; font-variant-numeric: tabular-nums; }
 .fiche-kv-item .v.body { font-family: var(--font-body); font-weight: 500; }
+
+/* Bouton de copie des coordonnées. 32 px à la souris, 44 px au doigt : c'est
+ * sur le terrain, téléphone en main, qu'il sert le plus. */
+.fiche-copy-btn {
+  flex: none;
+  width: 32px; height: 32px;
+  display: flex; align-items: center; justify-content: center;
+  background: transparent; border: none; border-radius: var(--radius-sm);
+  color: var(--fg-3); cursor: pointer;
+  transition: background var(--dur-micro) var(--ease-out), color var(--dur-micro) var(--ease-out);
+}
+.fiche-copy-btn:hover { background: var(--bg-sunken); color: var(--fg-1); }
+@media (pointer: coarse) {
+  .fiche-copy-btn { width: 44px; height: 44px; }
+}
 
 .fiche-matter-card {
   display: flex; align-items: center; gap: 12px;

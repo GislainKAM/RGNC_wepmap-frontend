@@ -8,6 +8,7 @@ import { FiltersPanel } from '@/components/map/FiltersPanel'
 import { PointFiche } from '@/components/map/PointFiche'
 import { PointList } from '@/components/map/PointList'
 import { Toaster, useToasts } from '@/components/ui/Toast'
+import { SkipLink, ANCRE_CONTENU } from '@/components/ui/SkipLink'
 import { usePointsGeoJSON, useStatsRGNC } from '@/hooks/useGeodeticPoints'
 import { regionApi } from '@/lib/api'
 import type { FiltresCarteState, Region } from '@/lib/types'
@@ -72,6 +73,7 @@ export default function MapPage() {
 
   return (
     <div className="app">
+      <SkipLink />
       <Header
         view={view}
         onViewChange={setView}
@@ -81,7 +83,7 @@ export default function MapPage() {
       />
       <StatsStrip stats={stats ?? null} visibleCount={visibleCount} />
 
-      <div className="main">
+      <div className="main" id={ANCRE_CONTENU} tabIndex={-1}>
         {/* Filters sidebar */}
         <FiltersPanel
           filters={filters}

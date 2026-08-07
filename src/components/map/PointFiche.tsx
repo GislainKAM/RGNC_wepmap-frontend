@@ -10,6 +10,7 @@ import { usePointDetail, useFicheSignaletique, useHistoriqueStatuts } from '@/ho
 import { useAuth } from '@/hooks/useAuth'
 import { useLanguage } from '@/hooks/useLanguage'
 import { pointApi } from '@/lib/api'
+import { copierTexte } from '@/lib/clipboard'
 import { API_URL } from '@/lib/constants'
 import { format } from 'date-fns'
 import { fr as frLocale, enUS } from 'date-fns/locale'
@@ -47,6 +48,38 @@ function CroquisSVG() {
   )
 }
 
+/**
+ * Titre de section suivi d'un bouton de copie.
+ *
+ * Un géomètre relève matricule et coordonnées pour les reporter dans son
+ * carnet ou son logiciel de calcul. Les retranscrire à la main est la
+ * principale source d'erreur — une décimale intervertie déplace le point de
+ * plusieurs mètres — et c'est impraticable sur un téléphone.
+ */
+function TitreSectionCopiable({ titre, libelleCopie, onCopier }: {
+  titre: string
+  libelleCopie: string
+  onCopier: () => void
+}) {
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, margin: '0 0 10px' }}>
+      <p className="fiche-section-title" style={{ margin: 0 }}>{titre}</p>
+      <button
+        type="button"
+        onClick={onCopier}
+        className="fiche-copy-btn"
+        // Le titre de section est purement visuel (10 px, majuscules) : sans
+        // ce libellé, un lecteur d'écran n'annoncerait qu'un bouton « copier »
+        // sans dire quoi.
+        aria-label={libelleCopie}
+        title={libelleCopie}
+      >
+        <Icon name="copy" size={13} />
+      </button>
+    </div>
+  )
+}
+
 export function PointFiche({ pointId, onClose, onToast }: PointFicheProps) {
   const [activeTab,        setActiveTab]        = useState<Tab>('coordonnees')
   const [showSignalement,  setShowSignalement]  = useState(false)
@@ -62,11 +95,19 @@ export function PointFiche({ pointId, onClose, onToast }: PointFicheProps) {
 
   if (pointId === null) return null
 
+  /** Copie `texte` et signale le résultat — l'échec ne doit jamais passer
+   *  inaperçu : sur le terrain, croire une valeur copiée alors qu'elle ne
+   *  l'est pas conduit à coller la précédente. */
+  const copierEtSignaler = async (texte: string) => {
+    const ok = await copierTexte(texte)
+    onToast?.(
+      ok ? t('fiche.toast.copie') : t('fiche.toast.copie_echec'),
+      ok ? 'success' : 'danger',
+    )
+  }
+
   const handleShare = () => {
-    const url = `${window.location.origin}/map?point=${pointId}`
-    navigator.clipboard.writeText(url).then(() => {
-      onToast?.(t('fiche.toast.copie'), 'success')
-    })
+    copierEtSignaler(`${window.location.origin}/map?point=${pointId}`)
   }
 
   const handleDownload = async () => {
@@ -204,7 +245,23 @@ export function PointFiche({ pointId, onClose, onToast }: PointFicheProps) {
 
                 {/* Coordonnées géographiques */}
                 <div>
-                  <p className="fiche-section-title">{t('fiche.section.coords_geo')}</p>
+                  <TitreSectionCopiable
+                    titre={t('fiche.section.coords_geo')}
+                    libelleCopie={t('fiche.copier.geo')}
+                    onCopier={() => copierEtSignaler(
+                      // Une ligne par valeur, préfixée du matricule : le
+                      // presse-papiers n'a pas de contexte, un couple de
+                      // nombres seul ne dit pas de quelle borne il provient.
+                      [
+                        `${point.matricule} — ${point.nom}`,
+                        `${t('fiche.kv.lat_dd')}: ${point.latitude_dd.toFixed(8)}`,
+                        `${t('fiche.kv.lon_dd')}: ${point.longitude_dd.toFixed(8)}`,
+                        `${t('fiche.kv.lat_dms')}: ${point.latitude_dms || '—'}`,
+                        `${t('fiche.kv.lon_dms')}: ${point.longitude_dms || '—'}`,
+                        `EPSG:${point.epsg_code}`,
+                      ].join('\n')
+                    )}
+                  />
                   <div className="fiche-kv">
                     <div className="fiche-kv-item">
                       <div className="k">{t('fiche.kv.lat_dd')}</div>
@@ -227,7 +284,18 @@ export function PointFiche({ pointId, onClose, onToast }: PointFicheProps) {
 
                 {/* Coordonnées UTM */}
                 <div>
-                  <p className="fiche-section-title">{t('fiche.section.coords_utm')}</p>
+                  <TitreSectionCopiable
+                    titre={t('fiche.section.coords_utm')}
+                    libelleCopie={t('fiche.copier.utm')}
+                    onCopier={() => copierEtSignaler(
+                      [
+                        `${point.matricule} — ${point.nom}`,
+                        `${t('fiche.kv.est')}: ${point.easting_utm != null ? point.easting_utm.toFixed(3) : '—'}`,
+                        `${t('fiche.kv.nord')}: ${point.northing_utm != null ? point.northing_utm.toFixed(3) : '—'}`,
+                        `${t('fiche.kv.zone_utm')}: ${point.zone_utm || '—'}`,
+                      ].join('\n')
+                    )}
+                  />
                   <div className="fiche-kv">
                     <div className="fiche-kv-item">
                       <div className="k">{t('fiche.kv.est')}</div>

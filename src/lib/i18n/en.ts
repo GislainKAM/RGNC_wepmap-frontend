@@ -1,6 +1,9 @@
 import type { TranslationKey } from './fr'
 
 const en: Record<TranslationKey, string> = {
+  // ── Accessibilité ───────────────────────────────────────────────
+  'a11y.skip':                 'Skip to main content',
+
   // ── Header ──────────────────────────────────────────────────────
   'header.carte':              'Map',
   'header.liste':              'List',
@@ -101,6 +104,9 @@ const en: Record<TranslationKey, string> = {
   'fiche.section.acces':           'Access',
   'fiche.section.historique':      'Status history',
   'fiche.section.pdf':             'Official data sheet (PDF)',
+  'fiche.copier.geo':       'Copy geographic coordinates',
+  'fiche.copier.utm':       'Copy UTM coordinates',
+  'fiche.toast.copie_echec': 'Copy failed — select the value manually.',
   'fiche.kv.region':        'Region',
   'fiche.kv.dept':          'Department',
   'fiche.kv.commune':       'Municipality',
@@ -247,7 +253,6 @@ const en: Record<TranslationKey, string> = {
   'admin.bornes.col.nom':        "Name",
   'admin.bornes.col.region':     "Region",
   'admin.bornes.col.commune':    "Municipality",
-  'admin.bornes.col.localite':   "Locality",
   'admin.bornes.col.ordre':      "Order",
   'admin.bornes.col.statut':     "Status",
   'admin.bornes.aucune':         "No benchmark found.",

@@ -40,18 +40,20 @@ export interface Commune {
 // ─── Point Géodésique (version allégée pour carte) ──────────────
 // Correspond à PointGeodesiqueLightSerializer (GeoFeatureModelSerializer)
 // Les propriétés sont dans feature.properties, pas à la racine.
+// Ce type ne liste que ce que l'API renvoie réellement. Les coordonnées
+// ne sont PAS ici : elles se lisent dans feature.geometry.coordinates,
+// au format GeoJSON [longitude, latitude] — cet ordre est celui de la
+// norme, il est inversé par rapport à l'usage courant « lat, lon ».
+// code_projet et localite ne sont plus servis non plus ; la fiche
+// détaillée (PointGeodesiqueDetail) les porte toujours.
 export interface PointGeodesiqueLight {
   id:          number
   matricule:   string           // ex: "B441"
-  code_projet: string           // ex: "Bafouusam_Densif"
   nom:         string
   ordre:       OrdreBorne
   statut:      StatutBorne
   region_nom:  string | null    // null si pas de région associée
   commune_nom: string | null    // null si pas de commune associée
-  localite:    string
-  latitude_dd:  number
-  longitude_dd: number
 }
 
 // ─── Point Géodésique (version détail) ──────────────────────────

@@ -281,6 +281,11 @@ export function MapCanvas({ points, selectedId, onPickPoint }: MapCanvasProps) {
   const [scaleLabel,        setScaleLabel]         = useState('')
   const [measureText,       setMeasureText]        = useState<string | null>(null)
   const [locating,          setLocating]           = useState(false)
+  // Motif d'échec de la géolocalisation. Distinguer le refus de permission de
+  // l'échec technique n'est pas cosmétique : le premier se corrige dans les
+  // réglages du navigateur, le second en sortant à découvert. Un message
+  // unique laisserait le géomètre chercher au mauvais endroit.
+  const [geoErreur,         setGeoErreur]          = useState<'refuse' | 'indisponible' | null>(null)
   const [isOffline,         setIsOffline]          = useState(false)
   const [tilesLoading,      setTilesLoading]       = useState(false)
 
@@ -792,11 +797,14 @@ export function MapCanvas({ points, selectedId, onPickPoint }: MapCanvasProps) {
   // ── 6. Géolocalisation ────────────────────────────────────────
 
   const handleLocate = useCallback(() => {
-    if (!navigator.geolocation || !mapInstanceRef.current || !olRef.current) return
+    if (!mapInstanceRef.current || !olRef.current) return
+    if (!navigator.geolocation) { setGeoErreur('indisponible'); return }
+
     setLocating(true)
+    setGeoErreur(null)
     navigator.geolocation.getCurrentPosition(
       (pos) => {
-        const { fromLonLat, OlFeature, OlPoint, Style, OlIcon } = olRef.current
+        const { fromLonLat, OlFeature, OlPoint, OlCircleGeom, Style, OlIcon, Stroke, Fill } = olRef.current
         const center = fromLonLat([pos.coords.longitude, pos.coords.latitude])
 
         // Centrer + zoomer
@@ -805,6 +813,31 @@ export function MapCanvas({ points, selectedId, onPickPoint }: MapCanvasProps) {
         // Placer / déplacer le marqueur de position
         if (locMarkerSourceRef.current) {
           locMarkerSourceRef.current.clear()
+
+          // Cercle de précision, tracé avant le marqueur pour passer dessous.
+          //
+          // `accuracy` est le rayon en mètres du cercle de confiance à 68 %
+          // annoncé par le navigateur. Il va de quelques mètres avec un vrai
+          // GPS à plusieurs kilomètres en triangulation réseau. Le montrer
+          // est indispensable ici : sans lui, un point bleu posé à 2 km de la
+          // position réelle a exactement la même apparence qu'un point juste,
+          // et un géomètre qui cherche une borne partirait dans la mauvaise
+          // direction en toute confiance.
+          //
+          // Le rayon est exprimé en mètres alors que la vue est en EPSG:3857,
+          // dont l'unité s'étire avec la latitude. Le Cameroun s'étend de 2°
+          // à 13° N, où le facteur d'échelle va de 1,00 à 1,03 : l'écart reste
+          // sous 3 %, négligeable pour un indicateur d'incertitude.
+          const precision = pos.coords.accuracy
+          if (precision && precision > 0) {
+            const cercle = new OlFeature(new OlCircleGeom(center, precision))
+            cercle.setStyle(new Style({
+              fill:   new Fill({ color: 'rgba(66,133,244,0.12)' }),
+              stroke: new Stroke({ color: 'rgba(66,133,244,0.40)', width: 1 }),
+            }))
+            locMarkerSourceRef.current.addFeature(cercle)
+          }
+
           const locFeature = new OlFeature({ geometry: new OlPoint(center) })
           locFeature.setStyle(new Style({
             image: new OlIcon({ src: makeLocMarkerSvg(), anchor: [0.5, 0.5] }),
@@ -814,8 +847,17 @@ export function MapCanvas({ points, selectedId, onPickPoint }: MapCanvasProps) {
 
         setLocating(false)
       },
-      () => setLocating(false),
-      { enableHighAccuracy: true, timeout: 10000 }
+      (err) => {
+        setLocating(false)
+        setGeoErreur(err.code === err.PERMISSION_DENIED ? 'refuse' : 'indisponible')
+      },
+      // enableHighAccuracy : le GPS du téléphone plutôt que la triangulation
+      // réseau, qui peut se tromper de plusieurs kilomètres. Le délai est
+      // porté à 15 s — une première acquisition GPS à froid, sous couvert
+      // forestier, dépasse couramment 10 s. maximumAge accepte un relevé de
+      // moins de 30 s, ce qui évite de refaire une acquisition complète quand
+      // la liste vient déjà de localiser l'utilisateur.
+      { enableHighAccuracy: true, timeout: 15000, maximumAge: 30000 }
     )
   }, [])
 
@@ -853,6 +895,32 @@ export function MapCanvas({ points, selectedId, onPickPoint }: MapCanvasProps) {
         <div className="offline-strip">
           <Icon name="wifi-off" size={14} />
           Mode hors-ligne — tuiles en cache uniquement
+        </div>
+      )}
+
+      {/* Échec de géolocalisation.
+          role="alert" : le bandeau apparaît à distance du bouton qui l'a
+          déclenché, un lecteur d'écran ne le signalerait pas autrement. */}
+      {geoErreur && (
+        <div className="geo-error-strip" role="alert">
+          <Icon name="triangle-alert" size={14} />
+          <span>
+            {geoErreur === 'refuse'
+              ? (lang === 'fr'
+                  ? 'Localisation refusée — autorisez l’accès à la position dans les réglages du navigateur.'
+                  : 'Location denied — allow position access in your browser settings.')
+              : (lang === 'fr'
+                  ? 'Position introuvable — placez-vous à découvert et réessayez.'
+                  : 'Position unavailable — move to an open area and try again.')}
+          </span>
+          <button
+            type="button"
+            onClick={() => setGeoErreur(null)}
+            className="geo-error-close"
+            aria-label={lang === 'fr' ? 'Fermer' : 'Dismiss'}
+          >
+            <Icon name="x" size={13} />
+          </button>
         </div>
       )}
 
@@ -935,6 +1003,7 @@ export function MapCanvas({ points, selectedId, onPickPoint }: MapCanvasProps) {
         <button
           className={`map-tool-btn${locating ? ' active' : ''}`}
           title={lang === 'fr' ? 'Ma position' : 'My location'}
+          aria-label={lang === 'fr' ? 'Afficher ma position' : 'Show my location'}
           onClick={handleLocate}
         >
           <Icon name={locating ? 'loader' : 'crosshair'} size={17}

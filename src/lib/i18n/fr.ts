@@ -1,4 +1,7 @@
 const fr = {
+  // ── Accessibilité ───────────────────────────────────────────────
+  'a11y.skip':                 'Aller au contenu principal',
+
   // ── Header ──────────────────────────────────────────────────────
   'header.carte':              'Carte',
   'header.liste':              'Liste',
@@ -99,6 +102,9 @@ const fr = {
   'fiche.section.acces':         'Accès',
   'fiche.section.historique':    'Historique des statuts',
   'fiche.section.pdf':           'Fiche signalétique PDF',
+  'fiche.copier.geo':       'Copier les coordonnées géographiques',
+  'fiche.copier.utm':       'Copier les coordonnées UTM',
+  'fiche.toast.copie_echec': 'Copie impossible — sélectionnez la valeur à la main.',
   'fiche.kv.region':        'Région',
   'fiche.kv.dept':          'Département',
   'fiche.kv.commune':       'Commune',
@@ -245,7 +251,6 @@ const fr = {
   'admin.bornes.col.nom':        "Nom",
   'admin.bornes.col.region':     "Région",
   'admin.bornes.col.commune':    "Commune",
-  'admin.bornes.col.localite':   "Localité",
   'admin.bornes.col.ordre':      "Ordre",
   'admin.bornes.col.statut':     "Statut",
   'admin.bornes.aucune':         "Aucune borne trouvée.",
