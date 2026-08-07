@@ -83,11 +83,15 @@ export default function AdminPage() {
 
       {/* ── Sidebar ── */}
       <aside className={`admin-sidebar${sidebarOpen ? ' open' : ''}`} style={{ width: 232, background: 'var(--rgnc-foret-900)', borderRight: '1px solid rgba(255,255,255,0.06)', display: 'flex', flexDirection: 'column', flexShrink: 0 }}>
-        <div onClick={() => router.push(ROUTES.MAP)} style={{ padding: '16px 14px', borderBottom: '1px solid rgba(255,255,255,0.08)', display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer' }} title={t('admin.sidebar.retour')}>
+        {/* <button> et non <div> : c'est le seul chemin de retour vers la
+            carte depuis l'administration, il doit être atteignable au
+            clavier. `title` ne suffit pas — il n'est lu que par une
+            infobulle à la souris. */}
+        <button type="button" onClick={() => router.push(ROUTES.MAP)} style={{ appearance: 'none', background: 'none', border: 'none', font: 'inherit', width: '100%', textAlign: 'left', padding: '16px 14px', borderBottom: '1px solid rgba(255,255,255,0.08)', display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer' }} title={t('admin.sidebar.retour')} aria-label={t('admin.sidebar.retour')}>
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img src="/assets/logo/rgnc-webmap-wordmark.svg" alt="RGNC WebMap" style={{ height: 22, filter: 'brightness(0) invert(1) opacity(0.88)' }} />
           <span style={{ fontFamily: 'var(--font-mono)', fontSize: 9, background: 'rgba(255,255,255,0.12)', color: 'rgba(255,255,255,0.6)', padding: '2px 7px', borderRadius: 'var(--radius-pill)', letterSpacing: '0.05em', marginLeft: 'auto', flexShrink: 0 }}>ADMIN</span>
-        </div>
+        </button>
 
         <nav style={{ flex: 1, padding: '10px 8px', display: 'flex', flexDirection: 'column', gap: 2, overflowY: 'auto' }}>
           {NAV.map(({ key, label, icon }) => {

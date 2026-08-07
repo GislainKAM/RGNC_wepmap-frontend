@@ -21,7 +21,7 @@ function CredentialsModal({
   }
   return (
     <div style={{ position: 'fixed', inset: 0, zIndex: 900, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-      <div onClick={onClose} style={{ position: 'absolute', inset: 0, background: 'rgba(14,27,34,0.55)' }} />
+      <div onClick={onClose} aria-hidden="true" style={{ position: 'absolute', inset: 0, background: 'rgba(14,27,34,0.55)' }} />
       <div style={{ position: 'relative', width: 420, background: 'var(--bg-elevated)', borderRadius: 'var(--radius-md)', boxShadow: 'var(--shadow-lg)', padding: '22px 24px', display: 'flex', flexDirection: 'column', gap: 14 }}>
         {/* Header */}
         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>

@@ -171,7 +171,7 @@ function BorneSlideOver({ editId, onClose, onToast }: {
 
   return (
     <div style={{ position: 'fixed', inset: 0, zIndex: 800, display: 'flex' }}>
-      <div onClick={onClose} style={{ flex: 1, background: 'rgba(14,27,34,0.45)' }} />
+      <div onClick={onClose} aria-hidden="true" style={{ flex: 1, background: 'rgba(14,27,34,0.45)' }} />
       <div className="admin-slideover" style={{ background: 'var(--bg-elevated)', display: 'flex', flexDirection: 'column', height: '100%', boxShadow: 'var(--shadow-lg)', width: 'min(440px, 100vw)' }}>
         <div style={{ padding: '14px 18px', borderBottom: '1px solid var(--border-subtle)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexShrink: 0 }}>
           <div>

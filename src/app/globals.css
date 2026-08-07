@@ -50,6 +50,60 @@
   --z-base: 0; --z-map-ui: 100; --z-panel: 200; --z-popover: 600; --z-modal: 800; --z-toast: 900;
 }
 
+/* ── Accessibilité : focus visible ── */
+/*
+ * :focus-visible plutôt que :focus — le navigateur ne montre l'anneau que
+ * lorsque l'utilisateur navigue au clavier, jamais après un clic à la
+ * souris. C'est ce qui permet d'avoir un focus franchement visible sans
+ * gêner l'usage à la souris ; il n'y a donc aucune raison de le retirer.
+ *
+ * --shadow-focus est déjà défini dans les tokens (double anneau : un liseré
+ * clair puis la couleur de marque), il n'était simplement jamais appliqué.
+ */
+:where(a, button, input, select, textarea, summary, [tabindex]):focus-visible {
+  outline: none;
+  box-shadow: var(--shadow-focus);
+  border-radius: var(--radius-sm);
+  position: relative;
+  z-index: 1;                     /* l'anneau passe au-dessus des voisins */
+}
+
+/* Lien d'évitement : premier élément focusable de la page, invisible tant
+ * qu'il n'a pas le focus. Permet d'atteindre le contenu sans traverser
+ * l'en-tête et les filtres à chaque changement de page. */
+.skip-link {
+  position: absolute;
+  left: -9999px;
+  top: 0;
+  z-index: var(--z-toast);
+  padding: 10px 16px;
+  background: var(--brand);
+  color: var(--fg-inverse);
+  font-family: var(--font-body);
+  font-size: var(--fs-base);
+  border-radius: 0 0 var(--radius-sm) 0;
+}
+.skip-link:focus {
+  left: 0;
+}
+
+/* ── Accessibilité : mouvement réduit ── */
+/*
+ * Respecte le réglage système « réduire les animations ». Au-delà du confort,
+ * c'est une nécessité pour les personnes sujettes aux troubles vestibulaires,
+ * chez qui les grandes translations (drawer, bottom sheet) provoquent des
+ * vertiges. Les transitions ne sont pas supprimées mais ramenées à une durée
+ * imperceptible : les états restent cohérents, sans déplacement animé.
+ */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
 /* ── Reset & base ── */
 *, *::before, *::after { box-sizing: border-box; }
 html, body { height: 100%; margin: 0; padding: 0; }
@@ -202,6 +256,14 @@ body:has(.page-scrollable) { overflow: auto; }
 .udrop-name { font-weight: 600; font-size: var(--fs-sm); color: var(--fg-1); }
 .udrop-role { font-size: var(--fs-xs); color: var(--fg-3); margin-top: 1px; }
 .udrop-item {
+  /* Neutralise le style natif du <button> — voir .filter-row. */
+  appearance: none;
+  background: none;
+  border: none;
+  font: inherit;
+  text-align: left;
+  width: 100%;
+
   display: flex; align-items: center; gap: 9px;
   padding: 9px 14px; font-size: var(--fs-sm); color: var(--fg-2);
   cursor: pointer; transition: background var(--dur-micro);
@@ -271,8 +333,22 @@ body:has(.page-scrollable) { overflow: auto; }
   text-transform: uppercase; color: var(--fg-3); margin: 0 0 9px;
 }
 .filter-row {
+  /* Neutralise le style natif du <button> : fond gris, bordure, police
+     système et texte centré. L'élément est un bouton pour l'accessibilité
+     (focus clavier, Entrée/Espace, rôle annoncé), pas pour son apparence. */
+  appearance: none;
+  background: none;
+  border: none;
+  font: inherit;
+  color: var(--fg-2);
+  text-align: left;
+  width: 100%;
+
   display: flex; align-items: center; gap: 9px;
-  padding: 5px 0; font-size: var(--fs-sm); color: var(--fg-2);
+  /* 5px verticaux donnaient une cible de 26px de haut, sous les 44px
+     recommandés au doigt. 9px portent la ligne à ~34px, et l'espacement
+     reste compatible avec la densité du panneau. */
+  padding: 9px 0; font-size: var(--fs-sm);
   cursor: pointer; user-select: none;
   transition: color var(--dur-micro) var(--ease-out);
   border-radius: var(--radius-xs);

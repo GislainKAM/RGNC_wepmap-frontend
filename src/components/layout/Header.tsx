@@ -137,7 +137,7 @@ function PrefModal({ onClose, t, lang, setLang }: {
   return (
     <div style={{ position: 'fixed', inset: 0, zIndex: 600, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
       {/* Backdrop */}
-      <div onClick={onClose} style={{ position: 'absolute', inset: 0, background: 'rgba(14,27,34,0.45)' }} />
+      <div onClick={onClose} aria-hidden="true" style={{ position: 'absolute', inset: 0, background: 'rgba(14,27,34,0.45)' }} />
 
       {/* Panneau */}
       <div style={{
@@ -450,13 +450,13 @@ export function Header({
 
                 {isAuth
                   ? (
-                    <div className="udrop-item danger" onClick={handleLogout}>
+                    <button type="button" className="udrop-item danger" onClick={handleLogout}>
                       <Icon name="log-out" size={14} /> {t('header.deconnexion')}
-                    </div>
+                    </button>
                   ) : (
-                    <div className="udrop-item" onClick={() => { setDropOpen(false); router.push(ROUTES.LOGIN) }}>
+                    <button type="button" className="udrop-item" onClick={() => { setDropOpen(false); router.push(ROUTES.LOGIN) }}>
                       <Icon name="log-out" size={14} /> {t('header.connexion')}
-                    </div>
+                    </button>
                   )
                 }
               </div>
