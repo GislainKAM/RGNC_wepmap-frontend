@@ -9,7 +9,7 @@ import { PointFiche } from '@/components/map/PointFiche'
 import { PointList } from '@/components/map/PointList'
 import { Toaster, useToasts } from '@/components/ui/Toast'
 import { SkipLink, ANCRE_CONTENU } from '@/components/ui/SkipLink'
-import { usePointsGeoJSON, useStatsRGNC } from '@/hooks/useGeodeticPoints'
+import { usePointsGeoJSON, useStatsRGNC, useZoneInteret } from '@/hooks/useGeodeticPoints'
 import { regionApi } from '@/lib/api'
 import type { FiltresCarteState, Region } from '@/lib/types'
 import { useQuery } from '@tanstack/react-query'
@@ -46,6 +46,10 @@ export default function MapPage() {
   // Data
   const { data: geojson, isLoading: pointsLoading } = usePointsGeoJSON(filters)
   const { data: stats } = useStatsRGNC()
+  // Emprise mise en évidence sur la carte — Cameroun tant qu'aucun filtre
+  // administratif n'est posé, sinon la région, le département ou
+  // l'arrondissement sélectionné.
+  const { data: zone } = useZoneInteret(filters)
 
   // Regions for filter panel
   const { data: regions = [] } = useQuery<Region[]>({
@@ -102,6 +106,7 @@ export default function MapPage() {
             points={geojson ?? null}
             selectedId={selectedId}
             onPickPoint={handlePickPoint}
+            zone={zone ?? null}
           />
         ) : (
           <PointList

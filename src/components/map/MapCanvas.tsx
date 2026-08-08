@@ -4,8 +4,9 @@ import React, { useRef, useEffect, useCallback, useState } from 'react'
 import { Icon } from '@/components/ui/Icon'
 import { OrdreIcon } from '@/components/ui/OrdreIcon'
 import { useLanguage } from '@/hooks/useLanguage'
-import type { GeoJSONFeatureCollection } from '@/lib/types'
+import type { GeoJSONFeatureCollection, ZoneInteret } from '@/lib/types'
 import { CAMEROON_CENTER, DEFAULT_ZOOM, MIN_ZOOM, MAX_ZOOM } from '@/lib/constants'
+import { decouperMasque } from '@/lib/masqueZone'
 
 // ── Types ────────────────────────────────────────────────────────
 
@@ -13,6 +14,8 @@ interface MapCanvasProps {
   points:      GeoJSONFeatureCollection | null
   selectedId:  number | null
   onPickPoint: (id: number) => void
+  /** Emprise à mettre en évidence ; le reste de la carte est assombri. */
+  zone?:       ZoneInteret | null
 }
 
 type Tool    = 'pan' | 'measure'
@@ -253,7 +256,7 @@ function niceDistance(meters: number): string {
 
 // ── Composant ────────────────────────────────────────────────────
 
-export function MapCanvas({ points, selectedId, onPickPoint }: MapCanvasProps) {
+export function MapCanvas({ points, selectedId, onPickPoint, zone }: MapCanvasProps) {
   const { lang } = useLanguage()
 
   // Map refs
@@ -267,6 +270,8 @@ export function MapCanvas({ points, selectedId, onPickPoint }: MapCanvasProps) {
   const drawInteractionRef = useRef<any>(null)
   const locMarkerSourceRef = useRef<any>(null)   // marqueur GPS utilisateur
   const selectionSourceRef = useRef<any>(null)   // anneau de sélection (cercle géographique)
+  const zoneSourceRef      = useRef<any>(null)   // masque + contour de la zone d'intérêt
+  const zoneCadreeRef      = useRef<string | null>(null)  // dernière zone sur laquelle on a recadré
   const displaySourceRef   = useRef<any>(null)   // features d'affichage (clusters + points seuls)
   const selectedIdRef      = useRef<number | null>(null)   // id sélectionné (lu par le style OL)
   const currentZoomRef     = useRef<number>(DEFAULT_ZOOM)  // zoom courant (lu par le style OL pour les étiquettes)
@@ -288,6 +293,7 @@ export function MapCanvas({ points, selectedId, onPickPoint }: MapCanvasProps) {
   const [geoErreur,         setGeoErreur]          = useState<'refuse' | 'indisponible' | null>(null)
   const [isOffline,         setIsOffline]          = useState(false)
   const [tilesLoading,      setTilesLoading]       = useState(false)
+  const [mapPrete,          setMapPrete]           = useState(false)
 
   // ── 1. Initialisation de la carte ──────────────────────────────
 
@@ -312,6 +318,7 @@ export function MapCanvas({ points, selectedId, onPickPoint }: MapCanvasProps) {
         { default: OlFeature },
         { default: OlPoint   },
         { default: OlCircleGeom },
+        { default: OlPolygon },
       ] = await Promise.all([
         import('ol/Map'),
         import('ol/View'),
@@ -328,6 +335,7 @@ export function MapCanvas({ points, selectedId, onPickPoint }: MapCanvasProps) {
         import('ol/Feature'),
         import('ol/geom/Point'),
         import('ol/geom/Circle'),  // anneau de sélection géographique
+        import('ol/geom/Polygon'), // masque de la zone d'intérêt
       ])
 
       if (!isMounted || !mapRef.current) return
@@ -338,7 +346,7 @@ export function MapCanvas({ points, selectedId, onPickPoint }: MapCanvasProps) {
         VectorLayer, VectorSource, GeoJSON,
         Style, OlIcon, Stroke, Fill, CircleStyle, OlText,
         fromLonLat, toLonLat,
-        Draw, OlFeature, OlPoint, OlCircleGeom,
+        Draw, OlFeature, OlPoint, OlCircleGeom, OlPolygon,
         getLength: sphereModule.getLength,
       }
 
@@ -457,6 +465,23 @@ export function MapCanvas({ points, selectedId, onPickPoint }: MapCanvasProps) {
         }),
       })
 
+      // ── Couche masque de la zone d'intérêt ───────────────────────
+      // zIndex 1 : au-dessus du fond de carte, sous tout le reste. Les
+      // bornes, les mesures et le marqueur GPS doivent rester à pleine
+      // luminosité même lorsqu'ils tombent hors de la zone — assombrir une
+      // borne la rendrait difficile à distinguer d'une borne détruite.
+      const zoneSource = new VectorSource()
+      zoneSourceRef.current = zoneSource
+      const zoneLayer = new VectorLayer({
+        source: zoneSource,
+        zIndex: 1,
+      })
+      // Le masque couvre toute la carte : il ne doit jamais intercepter un
+      // clic, sans quoi plus aucune borne ne serait sélectionnable. C'est le
+      // `layerFilter` du gestionnaire de clic, restreint à la couche des
+      // bornes, qui l'assure — le maintenir en cas d'ajout d'une couche.
+      zoneLayer.set('nom', 'masque-zone')
+
       // ── Couche anneau de sélection (cercle géographique à tirets) ────
       // zIndex 5 : sous les marqueurs pour ne pas masquer les voisins
       const selectionSource = new VectorSource()
@@ -487,7 +512,7 @@ export function MapCanvas({ points, selectedId, onPickPoint }: MapCanvasProps) {
 
       const map = new OlMap({
         target: mapRef.current!,
-        layers: [tileLayer, selectionLayer, measureLayer, vectorLayer, locMarkerLayer],
+        layers: [tileLayer, zoneLayer, selectionLayer, measureLayer, vectorLayer, locMarkerLayer],
         view: new View({
           center: fromLonLat(CAMEROON_CENTER),
           zoom: initZoom,
@@ -519,17 +544,9 @@ export function MapCanvas({ points, selectedId, onPickPoint }: MapCanvasProps) {
         const display    = buildDisplayFeatures(features, resolution, 40, OlFeature, OlPoint)
         displaySource.addFeatures(display)
 
-        // Zoom sur l'étendue des données disponibles au démarrage
-        if (features.length > 0) {
-          const extent = vectorSource.getExtent()
-          if (isFinite(extent[0])) {
-            map.getView().fit(extent, {
-              padding:  [60, 60, 60, 60],
-              maxZoom:  16,
-              duration: 600,
-            })
-          }
-        }
+        // Pas de cadrage sur l'étendue des bornes ici : c'est la zone
+        // d'intérêt qui commande la vue (effet 3b). Cadrer d'abord sur les
+        // données puis sur la zone enchaînerait deux animations contraires.
       }
 
       // Clic → sélection ou zoom cluster
@@ -603,6 +620,11 @@ export function MapCanvas({ points, selectedId, onPickPoint }: MapCanvasProps) {
       const onWindowResize = () => mapInstanceRef.current?.updateSize()
       window.addEventListener('resize', onWindowResize)
 
+      // Signale que les couches existent. Les effets qui écrivent dedans —
+      // le masque de zone en particulier — ont pu s'exécuter pendant les
+      // imports dynamiques, alors que les sources valaient encore null ;
+      // ce drapeau les fait rejouer une fois la carte prête.
+      setMapPrete(true)
     }
 
     initMap()
@@ -726,6 +748,84 @@ export function MapCanvas({ points, selectedId, onPickPoint }: MapCanvasProps) {
     // Forcer le re-rendu du layer marqueurs (marqueur sélectionné grossit)
     vectorLayerRef.current?.changed()
   }, [selectedId])
+
+  // ── 3b. Zone d'intérêt : masque, contour et cadrage ───────────
+
+  useEffect(() => {
+    const ol     = olRef.current
+    const source = zoneSourceRef.current
+    if (!ol || !source) return
+
+    const { OlFeature, OlPolygon, Style, Fill, Stroke, fromLonLat } = ol
+    source.clear()
+
+    const decoupe = decouperMasque(zone)
+    if (!decoupe) return
+
+    // Les anneaux arrivent en degrés WGS84 ; la carte travaille en Web
+    // Mercator. La conversion est faite ici, une fois, plutôt que confiée au
+    // lecteur GeoJSON d'OpenLayers : l'anneau du monde n'appartient à aucune
+    // géométrie source et devrait de toute façon être projeté à la main.
+    const enMercator = (anneaux: number[][][]) =>
+      anneaux.map((anneau) => anneau.map(([lon, lat]) => fromLonLat([lon, lat])))
+
+    const styleMasque = new Style({
+      // 42 % d'opacité : assez pour que l'œil isole immédiatement la zone,
+      // assez peu pour que le fond de carte reste lisible à l'extérieur —
+      // un géomètre a besoin de voir la route par laquelle il arrive, même
+      // quand elle part de l'arrondissement voisin.
+      fill: new Fill({ color: 'rgba(14, 27, 34, 0.42)' }),
+    })
+
+    const styleContour = new Style({
+      stroke: new Stroke({ color: 'rgba(31, 93, 58, 0.9)', width: 2 }),
+    })
+
+    const masque = new OlFeature(new OlPolygon(enMercator(decoupe.masque)))
+    masque.setStyle(styleMasque)
+    source.addFeature(masque)
+
+    // Enclaves : hors de la zone, mais situées dans la fenêtre percée par le
+    // masque. Sans ce second passage, elles apparaîtraient éclairées.
+    for (const enclave of decoupe.enclaves) {
+      const f = new OlFeature(new OlPolygon(enMercator([enclave])))
+      f.setStyle(styleMasque)
+      source.addFeature(f)
+    }
+
+    // Contour tracé en dernier pour rester au-dessus des aplats.
+    for (const contour of decoupe.contours) {
+      const f = new OlFeature(new OlPolygon(enMercator([contour])))
+      f.setStyle(styleContour)
+      source.addFeature(f)
+    }
+  }, [zone, mapPrete])
+
+  useEffect(() => {
+    if (!zone || !mapInstanceRef.current || !olRef.current) return
+
+    // Ne recadrer qu'au changement de zone. Sans cette garde, un simple
+    // nouveau rendu ramènerait la vue sur la zone et annulerait le
+    // déplacement que l'utilisateur vient de faire à la main.
+    const cle = `${zone.niveau}:${zone.nom}`
+    if (zoneCadreeRef.current === cle) return
+    zoneCadreeRef.current = cle
+
+    const { fromLonLat } = olRef.current
+    const [ouest, sud, est, nord] = zone.bbox
+    const etendue = [...fromLonLat([ouest, sud]), ...fromLonLat([est, nord])]
+
+    mapInstanceRef.current.getView().fit(etendue, {
+      // Marge asymétrique : le panneau de filtres mord sur la gauche et la
+      // barre d'outils sur la droite. Sans elle, le bord de la zone se
+      // retrouve caché derrière l'interface.
+      padding:  [70, 80, 70, 80],
+      // Une commune peut être minuscule ; sans plafond, le cadrage
+      // plongerait à un zoom où plus aucune tuile n'est disponible.
+      maxZoom:  15,
+      duration: 700,
+    })
+  }, [zone, mapPrete])
 
   // ── 4. Changement de fond de carte ────────────────────────────
 

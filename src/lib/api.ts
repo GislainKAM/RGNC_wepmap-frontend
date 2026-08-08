@@ -12,6 +12,7 @@ import type {
   GeoJSONFeatureCollection, GeoJSONFeatureCollectionPaginated,
   PaginatedResponse, DemandeAcces, ImportResult,
   JWTTokens, FiltresCarteState, InscriptionFormData, ConnexionFormData,
+  ZoneInteret,
 } from './types'
 
 // ═══════════════════════════════════════════════════════════════
@@ -114,6 +115,26 @@ export const communeApi = {
         params: departementId ? { departement: departementId } : {},
       })
       .then(r => r.data.results),
+}
+
+// ═══════════════════════════════════════════════════════════════
+// API — ZONE D'INTÉRÊT
+// ═══════════════════════════════════════════════════════════════
+
+export const zoneInteretApi = {
+  /**
+   * Emprise à mettre en évidence. Seuls les filtres administratifs comptent :
+   * restreindre par statut ou par ordre change les bornes affichées, pas le
+   * territoire observé — la vue ne doit pas se recadrer parce qu'on a décoché
+   * « borne détruite ».
+   */
+  get: (filtres?: Partial<FiltresCarteState>): Promise<ZoneInteret> => {
+    const params: Record<string, string> = {}
+    if (filtres?.communeId)     params.commune     = String(filtres.communeId)
+    if (filtres?.departementId) params.departement = String(filtres.departementId)
+    if (filtres?.regionId)      params.region      = String(filtres.regionId)
+    return apiClient.get<ZoneInteret>('/zone-interet/', { params }).then(r => r.data)
+  },
 }
 
 // ═══════════════════════════════════════════════════════════════

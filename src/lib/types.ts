@@ -246,6 +246,21 @@ export interface StatsRGNC {
 // FORMS & FILTERS
 // ═══════════════════════════════════════════════════════════════
 
+// ─── Zone d'intérêt (emprise mise en évidence sur la carte) ─────
+// Correspond à GET /api/zone-interet/. Le niveau suit le filtre le plus fin
+// actif ; sans filtre administratif, c'est le Cameroun entier.
+export interface ZoneInteret {
+  niveau:   'pays' | 'region' | 'departement' | 'commune'
+  nom:      string
+  /** [ouest, sud, est, nord] en degrés WGS84 — sert au cadrage de la vue. */
+  bbox:     [number, number, number, number]
+  /** Contour simplifié, en WGS84. Sert à découper le masque. */
+  geometry: {
+    type:        'Polygon' | 'MultiPolygon'
+    coordinates: number[][][] | number[][][][]
+  }
+}
+
 export interface FiltresCarteState {
   statuts:      StatutBorne[]
   ordres:       OrdreBorne[]
