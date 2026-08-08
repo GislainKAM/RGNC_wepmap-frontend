@@ -288,6 +288,30 @@ export const authApi = {
 }
 
 // ═══════════════════════════════════════════════════════════════
+// API — VÉRIFICATION D'ADRESSE E-MAIL
+// ═══════════════════════════════════════════════════════════════
+
+export const verificationApi = {
+  /**
+   * Consomme le jeton reçu par message. Sans authentification : le lien est
+   * ouvert depuis la boîte de réception, souvent sur un autre appareil que
+   * celui de l'inscription, où aucune session n'existe.
+   */
+  confirmer: (jeton: string): Promise<{ detail: string; verifie: boolean }> =>
+    apiClient
+      .post('/verification-email/confirmer/', { jeton })
+      .then(r => r.data),
+
+  /**
+   * Redemande un lien pour le compte connecté.
+   * Renvoie `attente_secondes` quand le délai entre deux envois n'est pas
+   * écoulé, pour que l'interface affiche le décompte au lieu d'un refus sec.
+   */
+  renvoyer: (): Promise<{ detail: string; attente_secondes?: number }> =>
+    apiClient.post('/verification-email/renvoyer/').then(r => r.data),
+}
+
+// ═══════════════════════════════════════════════════════════════
 // API — PROFIL UTILISATEUR
 // ═══════════════════════════════════════════════════════════════
 

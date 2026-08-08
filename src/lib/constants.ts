@@ -90,6 +90,7 @@ export const ROUTES = {
   MAP:      '/map',
   LOGIN:    '/auth/login',
   REGISTER: '/auth/register',
+  VERIFIER: '/auth/verifier',
   PROFILE:  '/profil',
   ADMIN:    '/admin',
   POINT:    (id: number | string) => `/points/${id}`,

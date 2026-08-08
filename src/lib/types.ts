@@ -186,7 +186,12 @@ export interface ProfilUtilisateur {
   telephone:        string
   region_principale: number | null   // ID FK
   region_nom:       string | null    // null si pas de région
+  /** Un admin a validé la qualité de géomètre — ouvre le téléchargement. */
   est_verifie:      boolean
+  /** L'adresse déclarée a été confirmée par lien — ouvre le signalement.
+   *  Distinct de `est_verifie` : une adresse valide ne fait pas un géomètre. */
+  email_verifie:      boolean
+  date_email_verifie: string | null
   peut_telecharger: boolean
   date_inscription: string
   photo_url:        string | null    // URL absolue de la photo de profil (null si aucune)

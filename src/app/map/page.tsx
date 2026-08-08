@@ -9,6 +9,7 @@ import { PointFiche } from '@/components/map/PointFiche'
 import { PointList } from '@/components/map/PointList'
 import { Toaster, useToasts } from '@/components/ui/Toast'
 import { SkipLink, ANCRE_CONTENU } from '@/components/ui/SkipLink'
+import { BandeauVerification } from '@/components/layout/BandeauVerification'
 import { usePointsGeoJSON, useStatsRGNC, useZoneInteret } from '@/hooks/useGeodeticPoints'
 import { regionApi } from '@/lib/api'
 import type { FiltresCarteState, Region } from '@/lib/types'
@@ -102,6 +103,9 @@ export default function MapPage() {
         onToggleFilters={() => setFiltersCollapsed((c) => !c)}
         filtersCollapsed={filtersCollapsed}
       />
+      {/* Sous l'en-tete : le rappel precede les chiffres, parce qu'il
+          appelle une action alors que le bandeau ne fait qu'informer. */}
+      <BandeauVerification />
       <StatsStrip stats={stats ?? null} visibleCount={visibleCount} zone={zone ?? null} />
 
       <div className="main" id={ANCRE_CONTENU} tabIndex={-1}>

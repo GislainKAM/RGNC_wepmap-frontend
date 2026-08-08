@@ -61,6 +61,23 @@ const en: Record<TranslationKey, string> = {
   'map.cadrer_zone':      "Zoom to area of interest",
   'stats.zone_courante':  "Area",
 
+
+  // ── Vérification d'adresse ──────────────────────────────────────
+  'verif.bandeau':           "Confirm your address to report marker conditions —",
+  'verif.renvoyer':          "Resend the link",
+  'verif.envoi_en_cours':    "Sending…",
+  'verif.patienter':         "Please wait",
+  'verif.masquer':           "Hide this reminder",
+  'verif.en_cours':          "Confirming…",
+  'verif.titre_ok':          "Address confirmed",
+  'verif.titre_ko':          "Confirmation failed",
+  'verif.lien_incomplet':    "Incomplete link: the verification token is missing.",
+  'verif.echec_reseau':      "The server is unreachable. Try again shortly.",
+  'verif.note_admin':        "Downloading data sheets still requires an administrator to validate your surveyor credentials — that is a separate step.",
+  'verif.aide_renvoi':       "Log in, then request a new link from the banner.",
+  'verif.aller_carte':       "Go to the map",
+  'verif.aller_connexion':   "Log in",
+
   // ── Filtres ──────────────────────────────────────────────────────
   'filters.title':          'Filters',
   'filters.actifs':         'active',

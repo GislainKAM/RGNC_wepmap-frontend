@@ -59,6 +59,23 @@ const fr = {
   'map.cadrer_zone':      "Cadrer sur la zone d'intérêt",
   'stats.zone_courante':  "Zone",
 
+
+  // ── Vérification d'adresse ──────────────────────────────────────
+  'verif.bandeau':           "Confirmez votre adresse pour pouvoir signaler l'état des bornes —",
+  'verif.renvoyer':          "Renvoyer le lien",
+  'verif.envoi_en_cours':    "Envoi…",
+  'verif.patienter':         "Patientez",
+  'verif.masquer':           "Masquer ce rappel",
+  'verif.en_cours':          "Confirmation en cours…",
+  'verif.titre_ok':          "Adresse confirmée",
+  'verif.titre_ko':          "Confirmation impossible",
+  'verif.lien_incomplet':    "Lien incomplet : le jeton de vérification est absent.",
+  'verif.echec_reseau':      "Le serveur est injoignable. Réessayez dans un instant.",
+  'verif.note_admin':        "Le téléchargement des fiches signalétiques reste soumis à la validation de votre qualité de géomètre par un administrateur — c'est une étape distincte.",
+  'verif.aide_renvoi':       "Connectez-vous puis demandez un nouvel envoi depuis le bandeau.",
+  'verif.aller_carte':       "Aller à la carte",
+  'verif.aller_connexion':   "Se connecter",
+
   // ── Filtres ──────────────────────────────────────────────────────
   'filters.title':          'Filtres',
   'filters.actifs':         'actif',

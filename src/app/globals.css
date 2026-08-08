@@ -1413,3 +1413,71 @@ tr:hover .admin-col-sticky-right {
   .login-illustration { flex: 0 0 140px; }
   .login-tagline { font-size: 18px; }
 }
+
+/* ═══════════════════ VÉRIFICATION D'ADRESSE ═══════════════════ */
+
+/* Bandeau de rappel — sous l'en-tête, au-dessus du bandeau de statistiques.
+   Ton d'avertissement et non d'erreur : le compte fonctionne, il manque
+   seulement une confirmation. */
+.bandeau-verif {
+  display: flex; align-items: center; gap: 10px;
+  padding: 8px 16px;
+  background: var(--rgnc-warning-bg);
+  border-bottom: 1px solid var(--rgnc-warning);
+  color: var(--rgnc-encre-800);
+  font-family: var(--font-body); font-size: 13px;
+  flex-shrink: 0;
+}
+.bandeau-verif-texte  { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.bandeau-verif-retour { flex: none; font-size: 12px; color: var(--fg-2); font-style: italic; }
+.bandeau-verif-action {
+  flex: none; height: 30px; padding: 0 12px;
+  border: 1px solid var(--rgnc-warning); border-radius: var(--radius-sm);
+  background: transparent; color: var(--rgnc-encre-800);
+  font-family: var(--font-body); font-size: 12px; font-weight: 600;
+  cursor: pointer;
+}
+.bandeau-verif-action:disabled { opacity: 0.55; cursor: default; }
+.bandeau-verif-fermer {
+  flex: none; width: 28px; height: 28px;
+  display: flex; align-items: center; justify-content: center;
+  background: transparent; border: none; border-radius: var(--radius-sm);
+  color: var(--fg-3); cursor: pointer;
+}
+
+@media (max-width: 768px) {
+  /* Le libellé passe sur deux lignes plutôt que d'être tronqué : sur un
+     téléphone, la phrase amputée ne dirait plus ce qu'il faut faire. */
+  .bandeau-verif { flex-wrap: wrap; gap: 8px; padding: 10px 12px; }
+  .bandeau-verif-texte { flex: 1 1 100%; white-space: normal; }
+  .bandeau-verif-action { height: 36px; }
+}
+
+/* Page de confirmation, ouverte depuis le lien reçu par message. */
+.verif-page {
+  min-height: 100vh; min-height: 100dvh;
+  display: flex; align-items: center; justify-content: center;
+  padding: 24px; background: var(--bg-app);
+}
+.verif-carte {
+  width: 100%; max-width: 460px;
+  display: flex; flex-direction: column; align-items: center; gap: 14px;
+  padding: 36px 28px; text-align: center;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-subtle); border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-md);
+}
+.verif-icone {
+  width: 52px; height: 52px; border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+}
+.verif-icone-ok { background: var(--rgnc-success-bg); color: var(--rgnc-success); }
+.verif-icone-ko { background: var(--rgnc-danger-bg);  color: var(--rgnc-danger); }
+.verif-titre { font-family: var(--font-display); font-size: 20px; margin: 0; color: var(--fg-1); }
+.verif-texte { font-size: 14px; color: var(--fg-2); margin: 0; }
+.verif-note  { font-size: 12px; color: var(--fg-3); margin: 0; line-height: 1.5; }
+.verif-spinner {
+  width: 30px; height: 30px; border-radius: 50%;
+  border: 2px solid var(--border-subtle); border-top-color: var(--brand);
+  animation: spin 0.8s linear infinite;
+}
