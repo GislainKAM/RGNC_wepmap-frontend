@@ -171,7 +171,7 @@ function BorneSlideOver({ editId, onClose, onToast }: {
 
   return (
     <div style={{ position: 'fixed', inset: 0, zIndex: 800, display: 'flex' }}>
-      <div onClick={onClose} style={{ flex: 1, background: 'rgba(14,27,34,0.45)' }} />
+      <div onClick={onClose} aria-hidden="true" style={{ flex: 1, background: 'rgba(14,27,34,0.45)' }} />
       <div className="admin-slideover" style={{ background: 'var(--bg-elevated)', display: 'flex', flexDirection: 'column', height: '100%', boxShadow: 'var(--shadow-lg)', width: 'min(440px, 100vw)' }}>
         <div style={{ padding: '14px 18px', borderBottom: '1px solid var(--border-subtle)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexShrink: 0 }}>
           <div>
@@ -482,18 +482,22 @@ export function SectionBornes({ onToast }: { onToast: (m: string, t?: ToastType)
                   <input type="checkbox" style={{ accentColor: 'var(--rgnc-foret-700)' }}
                     onChange={toggleAll} checked={selIds.size === bornes.length && bornes.length > 0} />
                 </th>
+                {/* Colonne « Localité » retirée : la liste allégée servie par
+                    /points/ ne porte plus ce champ, et il répétait le nom de la
+                    borne pour plus de la moitié des enregistrements. La valeur
+                    reste consultable et modifiable dans le formulaire de détail,
+                    qui interroge la fiche complète. */}
                 {[
                   t('admin.bornes.col.matricule'), t('admin.bornes.col.nom'),
                   t('admin.bornes.col.region'), t('admin.bornes.col.commune'),
-                  t('admin.bornes.col.localite'), t('admin.bornes.col.ordre'),
-                  t('admin.bornes.col.statut'),
+                  t('admin.bornes.col.ordre'), t('admin.bornes.col.statut'),
                 ].map((h) => <th key={h}>{h}</th>)}
                 {/* Colonne action — sticky à droite */}
                 <th className="admin-col-sticky-right" style={{ width: 44 }}></th>
               </tr>
             </thead>
             <tbody>
-              {isLoading && <tr><td colSpan={9}><Spinner /></td></tr>}
+              {isLoading && <tr><td colSpan={8}><Spinner /></td></tr>}
               {!isLoading && bornes.map((b: PointGeodesiqueLight) => (
                 <tr key={b.id} onClick={() => toggleSel(b.id)} style={{ background: selIds.has(b.id) ? 'var(--rgnc-foret-50)' : '', cursor: 'pointer' }}>
                   <td onClick={(e) => e.stopPropagation()}>
@@ -503,7 +507,6 @@ export function SectionBornes({ onToast }: { onToast: (m: string, t?: ToastType)
                   <td style={{ fontWeight: 500, maxWidth: 200, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{b.nom}</td>
                   <td style={{ color: 'var(--fg-2)' }}>{b.region_nom}</td>
                   <td style={{ color: 'var(--fg-2)' }}>{b.commune_nom}</td>
-                  <td style={{ color: 'var(--fg-3)', fontStyle: 'italic', fontSize: 12 }}>{b.localite}</td>
                   <td>
                     <div style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}>
                       {/* Forme = ordre, couleur = statut — cohérent avec la carte */}
@@ -531,7 +534,7 @@ export function SectionBornes({ onToast }: { onToast: (m: string, t?: ToastType)
                 </tr>
               ))}
               {!isLoading && bornes.length === 0 && (
-                <tr><td colSpan={9} style={{ textAlign: 'center', padding: '24px', color: 'var(--fg-3)' }}>{t('admin.bornes.aucune')}</td></tr>
+                <tr><td colSpan={8} style={{ textAlign: 'center', padding: '24px', color: 'var(--fg-3)' }}>{t('admin.bornes.aucune')}</td></tr>
               )}
             </tbody>
           </table>

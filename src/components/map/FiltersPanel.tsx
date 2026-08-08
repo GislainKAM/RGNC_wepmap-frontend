@@ -116,7 +116,18 @@ interface FilterRowProps {
 
 function FilterRow({ checked, onToggle, label, sublabel, count, dotColor, icon }: FilterRowProps) {
   return (
-    <div className="filter-row" onClick={onToggle} style={{ cursor: 'pointer' }}>
+    // <button> et non <div> : le navigateur fournit alors gratuitement le
+    // focus au clavier, l'activation par Entrée et Espace, et l'annonce du
+    // rôle par les lecteurs d'écran. role="switch" + aria-checked décrivent
+    // un filtre qu'on active ou désactive — ce que "bouton" seul ne dit pas.
+    <button
+      type="button"
+      className="filter-row"
+      onClick={onToggle}
+      role="switch"
+      aria-checked={checked}
+      style={{ cursor: 'pointer' }}
+    >
       <CheckBox checked={checked} />
       {icon}
       {dotColor && <span className="status-dot" style={{ background: dotColor }} />}
@@ -131,7 +142,7 @@ function FilterRow({ checked, onToggle, label, sublabel, count, dotColor, icon }
       {count !== undefined && (
         <span className="fc">{count.toLocaleString()}</span>
       )}
-    </div>
+    </button>
   )
 }
 

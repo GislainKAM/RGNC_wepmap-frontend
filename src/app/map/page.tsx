@@ -8,7 +8,8 @@ import { FiltersPanel } from '@/components/map/FiltersPanel'
 import { PointFiche } from '@/components/map/PointFiche'
 import { PointList } from '@/components/map/PointList'
 import { Toaster, useToasts } from '@/components/ui/Toast'
-import { usePointsGeoJSON, useStatsRGNC } from '@/hooks/useGeodeticPoints'
+import { SkipLink, ANCRE_CONTENU } from '@/components/ui/SkipLink'
+import { usePointsGeoJSON, useStatsRGNC, useZoneInteret } from '@/hooks/useGeodeticPoints'
 import { regionApi } from '@/lib/api'
 import type { FiltresCarteState, Region } from '@/lib/types'
 import { useQuery } from '@tanstack/react-query'
@@ -45,6 +46,10 @@ export default function MapPage() {
   // Data
   const { data: geojson, isLoading: pointsLoading } = usePointsGeoJSON(filters)
   const { data: stats } = useStatsRGNC()
+  // Emprise mise en évidence sur la carte — Cameroun tant qu'aucun filtre
+  // administratif n'est posé, sinon la région, le département ou
+  // l'arrondissement sélectionné.
+  const { data: zone } = useZoneInteret(filters)
 
   // Regions for filter panel
   const { data: regions = [] } = useQuery<Region[]>({
@@ -70,8 +75,26 @@ export default function MapPage() {
 
   const visibleCount = geojson?.features?.length ?? 0
 
+  /**
+   * Nombre de critères actifs, affiché en pastille sur le bouton Filtres.
+   *
+   * Sur mobile le panneau est fermé par défaut : sans ce compteur, rien
+   * n'indique qu'un filtre restreint l'affichage, et une carte presque vide
+   * passe pour un défaut de chargement. La recherche est comptée aussi — le
+   * champ du header est réduit à une icône sur mobile, donc invisible.
+   */
+  const nbFiltresActifs =
+    (filters.statuts.length      ? 1 : 0) +
+    (filters.ordres.length       ? 1 : 0) +
+    (filters.regionId            ? 1 : 0) +
+    (filters.departementId       ? 1 : 0) +
+    (filters.communeId           ? 1 : 0) +
+    (filters.reseau              ? 1 : 0) +
+    (filters.recherche.trim()    ? 1 : 0)
+
   return (
     <div className="app">
+      <SkipLink />
       <Header
         view={view}
         onViewChange={setView}
@@ -79,9 +102,9 @@ export default function MapPage() {
         onToggleFilters={() => setFiltersCollapsed((c) => !c)}
         filtersCollapsed={filtersCollapsed}
       />
-      <StatsStrip stats={stats ?? null} visibleCount={visibleCount} />
+      <StatsStrip stats={stats ?? null} visibleCount={visibleCount} zone={zone ?? null} />
 
-      <div className="main">
+      <div className="main" id={ANCRE_CONTENU} tabIndex={-1}>
         {/* Filters sidebar */}
         <FiltersPanel
           filters={filters}
@@ -100,12 +123,18 @@ export default function MapPage() {
             points={geojson ?? null}
             selectedId={selectedId}
             onPickPoint={handlePickPoint}
+            zone={zone ?? null}
+            onBasculerFiltres={() => setFiltersCollapsed((c) => !c)}
+            filtresOuverts={!filtersCollapsed}
+            nbFiltresActifs={nbFiltresActifs}
           />
         ) : (
           <PointList
             points={geojson?.features ?? []}
             onPickPoint={handlePickPoint}
             isLoading={pointsLoading}
+            onBasculerFiltres={() => setFiltersCollapsed((c) => !c)}
+            nbFiltresActifs={nbFiltresActifs}
           />
         )}
 

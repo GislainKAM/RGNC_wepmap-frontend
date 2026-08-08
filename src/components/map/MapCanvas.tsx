@@ -4,8 +4,9 @@ import React, { useRef, useEffect, useCallback, useState } from 'react'
 import { Icon } from '@/components/ui/Icon'
 import { OrdreIcon } from '@/components/ui/OrdreIcon'
 import { useLanguage } from '@/hooks/useLanguage'
-import type { GeoJSONFeatureCollection } from '@/lib/types'
+import type { GeoJSONFeatureCollection, ZoneInteret } from '@/lib/types'
 import { CAMEROON_CENTER, DEFAULT_ZOOM, MIN_ZOOM, MAX_ZOOM } from '@/lib/constants'
+import { decouperMasque } from '@/lib/masqueZone'
 
 // ── Types ────────────────────────────────────────────────────────
 
@@ -13,6 +14,14 @@ interface MapCanvasProps {
   points:      GeoJSONFeatureCollection | null
   selectedId:  number | null
   onPickPoint: (id: number) => void
+  /** Emprise à mettre en évidence ; le reste de la carte est assombri. */
+  zone?:       ZoneInteret | null
+  /** Ouvre ou referme le panneau de filtres — bouton mobile de la carte. */
+  onBasculerFiltres?: () => void
+  /** État du panneau : commande l'icône, qui doit annoncer le sens du geste. */
+  filtresOuverts?: boolean
+  /** Nombre de critères actifs, affiché en pastille sur ce bouton. */
+  nbFiltresActifs?: number
 }
 
 type Tool    = 'pan' | 'measure'
@@ -253,8 +262,11 @@ function niceDistance(meters: number): string {
 
 // ── Composant ────────────────────────────────────────────────────
 
-export function MapCanvas({ points, selectedId, onPickPoint }: MapCanvasProps) {
-  const { lang } = useLanguage()
+export function MapCanvas({
+  points, selectedId, onPickPoint, zone,
+  onBasculerFiltres, filtresOuverts = false, nbFiltresActifs = 0,
+}: MapCanvasProps) {
+  const { t } = useLanguage()
 
   // Map refs
   const mapRef             = useRef<HTMLDivElement>(null)
@@ -267,6 +279,8 @@ export function MapCanvas({ points, selectedId, onPickPoint }: MapCanvasProps) {
   const drawInteractionRef = useRef<any>(null)
   const locMarkerSourceRef = useRef<any>(null)   // marqueur GPS utilisateur
   const selectionSourceRef = useRef<any>(null)   // anneau de sélection (cercle géographique)
+  const zoneSourceRef      = useRef<any>(null)   // masque + contour de la zone d'intérêt
+  const zoneCadreeRef      = useRef<string | null>(null)  // dernière zone sur laquelle on a recadré
   const displaySourceRef   = useRef<any>(null)   // features d'affichage (clusters + points seuls)
   const selectedIdRef      = useRef<number | null>(null)   // id sélectionné (lu par le style OL)
   const currentZoomRef     = useRef<number>(DEFAULT_ZOOM)  // zoom courant (lu par le style OL pour les étiquettes)
@@ -281,8 +295,14 @@ export function MapCanvas({ points, selectedId, onPickPoint }: MapCanvasProps) {
   const [scaleLabel,        setScaleLabel]         = useState('')
   const [measureText,       setMeasureText]        = useState<string | null>(null)
   const [locating,          setLocating]           = useState(false)
+  // Motif d'échec de la géolocalisation. Distinguer le refus de permission de
+  // l'échec technique n'est pas cosmétique : le premier se corrige dans les
+  // réglages du navigateur, le second en sortant à découvert. Un message
+  // unique laisserait le géomètre chercher au mauvais endroit.
+  const [geoErreur,         setGeoErreur]          = useState<'refuse' | 'indisponible' | null>(null)
   const [isOffline,         setIsOffline]          = useState(false)
   const [tilesLoading,      setTilesLoading]       = useState(false)
+  const [mapPrete,          setMapPrete]           = useState(false)
 
   // ── 1. Initialisation de la carte ──────────────────────────────
 
@@ -307,6 +327,7 @@ export function MapCanvas({ points, selectedId, onPickPoint }: MapCanvasProps) {
         { default: OlFeature },
         { default: OlPoint   },
         { default: OlCircleGeom },
+        { default: OlPolygon },
       ] = await Promise.all([
         import('ol/Map'),
         import('ol/View'),
@@ -323,6 +344,7 @@ export function MapCanvas({ points, selectedId, onPickPoint }: MapCanvasProps) {
         import('ol/Feature'),
         import('ol/geom/Point'),
         import('ol/geom/Circle'),  // anneau de sélection géographique
+        import('ol/geom/Polygon'), // masque de la zone d'intérêt
       ])
 
       if (!isMounted || !mapRef.current) return
@@ -333,7 +355,7 @@ export function MapCanvas({ points, selectedId, onPickPoint }: MapCanvasProps) {
         VectorLayer, VectorSource, GeoJSON,
         Style, OlIcon, Stroke, Fill, CircleStyle, OlText,
         fromLonLat, toLonLat,
-        Draw, OlFeature, OlPoint, OlCircleGeom,
+        Draw, OlFeature, OlPoint, OlCircleGeom, OlPolygon,
         getLength: sphereModule.getLength,
       }
 
@@ -452,6 +474,23 @@ export function MapCanvas({ points, selectedId, onPickPoint }: MapCanvasProps) {
         }),
       })
 
+      // ── Couche masque de la zone d'intérêt ───────────────────────
+      // zIndex 1 : au-dessus du fond de carte, sous tout le reste. Les
+      // bornes, les mesures et le marqueur GPS doivent rester à pleine
+      // luminosité même lorsqu'ils tombent hors de la zone — assombrir une
+      // borne la rendrait difficile à distinguer d'une borne détruite.
+      const zoneSource = new VectorSource()
+      zoneSourceRef.current = zoneSource
+      const zoneLayer = new VectorLayer({
+        source: zoneSource,
+        zIndex: 1,
+      })
+      // Le masque couvre toute la carte : il ne doit jamais intercepter un
+      // clic, sans quoi plus aucune borne ne serait sélectionnable. C'est le
+      // `layerFilter` du gestionnaire de clic, restreint à la couche des
+      // bornes, qui l'assure — le maintenir en cas d'ajout d'une couche.
+      zoneLayer.set('nom', 'masque-zone')
+
       // ── Couche anneau de sélection (cercle géographique à tirets) ────
       // zIndex 5 : sous les marqueurs pour ne pas masquer les voisins
       const selectionSource = new VectorSource()
@@ -482,7 +521,7 @@ export function MapCanvas({ points, selectedId, onPickPoint }: MapCanvasProps) {
 
       const map = new OlMap({
         target: mapRef.current!,
-        layers: [tileLayer, selectionLayer, measureLayer, vectorLayer, locMarkerLayer],
+        layers: [tileLayer, zoneLayer, selectionLayer, measureLayer, vectorLayer, locMarkerLayer],
         view: new View({
           center: fromLonLat(CAMEROON_CENTER),
           zoom: initZoom,
@@ -514,17 +553,9 @@ export function MapCanvas({ points, selectedId, onPickPoint }: MapCanvasProps) {
         const display    = buildDisplayFeatures(features, resolution, 40, OlFeature, OlPoint)
         displaySource.addFeatures(display)
 
-        // Zoom sur l'étendue des données disponibles au démarrage
-        if (features.length > 0) {
-          const extent = vectorSource.getExtent()
-          if (isFinite(extent[0])) {
-            map.getView().fit(extent, {
-              padding:  [60, 60, 60, 60],
-              maxZoom:  16,
-              duration: 600,
-            })
-          }
-        }
+        // Pas de cadrage sur l'étendue des bornes ici : c'est la zone
+        // d'intérêt qui commande la vue (effet 3b). Cadrer d'abord sur les
+        // données puis sur la zone enchaînerait deux animations contraires.
       }
 
       // Clic → sélection ou zoom cluster
@@ -598,6 +629,11 @@ export function MapCanvas({ points, selectedId, onPickPoint }: MapCanvasProps) {
       const onWindowResize = () => mapInstanceRef.current?.updateSize()
       window.addEventListener('resize', onWindowResize)
 
+      // Signale que les couches existent. Les effets qui écrivent dedans —
+      // le masque de zone en particulier — ont pu s'exécuter pendant les
+      // imports dynamiques, alors que les sources valaient encore null ;
+      // ce drapeau les fait rejouer une fois la carte prête.
+      setMapPrete(true)
     }
 
     initMap()
@@ -722,6 +758,102 @@ export function MapCanvas({ points, selectedId, onPickPoint }: MapCanvasProps) {
     vectorLayerRef.current?.changed()
   }, [selectedId])
 
+  // ── 3b. Zone d'intérêt : masque, contour et cadrage ───────────
+
+  useEffect(() => {
+    const ol     = olRef.current
+    const source = zoneSourceRef.current
+    if (!ol || !source) return
+
+    const { OlFeature, OlPolygon, Style, Fill, Stroke, fromLonLat } = ol
+    source.clear()
+
+    const decoupe = decouperMasque(zone)
+    if (!decoupe) return
+
+    // Les anneaux arrivent en degrés WGS84 ; la carte travaille en Web
+    // Mercator. La conversion est faite ici, une fois, plutôt que confiée au
+    // lecteur GeoJSON d'OpenLayers : l'anneau du monde n'appartient à aucune
+    // géométrie source et devrait de toute façon être projeté à la main.
+    const enMercator = (anneaux: number[][][]) =>
+      anneaux.map((anneau) => anneau.map(([lon, lat]) => fromLonLat([lon, lat])))
+
+    const styleMasque = new Style({
+      // 42 % d'opacité : assez pour que l'œil isole immédiatement la zone,
+      // assez peu pour que le fond de carte reste lisible à l'extérieur —
+      // un géomètre a besoin de voir la route par laquelle il arrive, même
+      // quand elle part de l'arrondissement voisin.
+      fill: new Fill({ color: 'rgba(14, 27, 34, 0.42)' }),
+    })
+
+    const styleContour = new Style({
+      stroke: new Stroke({ color: 'rgba(31, 93, 58, 0.9)', width: 2 }),
+    })
+
+    const masque = new OlFeature(new OlPolygon(enMercator(decoupe.masque)))
+    masque.setStyle(styleMasque)
+    source.addFeature(masque)
+
+    // Enclaves : hors de la zone, mais situées dans la fenêtre percée par le
+    // masque. Sans ce second passage, elles apparaîtraient éclairées.
+    for (const enclave of decoupe.enclaves) {
+      const f = new OlFeature(new OlPolygon(enMercator([enclave])))
+      f.setStyle(styleMasque)
+      source.addFeature(f)
+    }
+
+    // Contour tracé en dernier pour rester au-dessus des aplats.
+    for (const contour of decoupe.contours) {
+      const f = new OlFeature(new OlPolygon(enMercator([contour])))
+      f.setStyle(styleContour)
+      source.addFeature(f)
+    }
+  }, [zone, mapPrete])
+
+  /**
+   * Ajuste la vue sur l'emprise de la zone d'intérêt.
+   *
+   * Partagé par le recadrage automatique (au changement de filtre) et par le
+   * bouton de la barre d'outils, pour que les deux donnent exactement le
+   * même cadrage — un bouton qui recentre autrement que l'affichage initial
+   * désoriente plus qu'il n'aide.
+   */
+  const cadrerSurZone = useCallback((duree = 700) => {
+    if (!zone || !mapInstanceRef.current || !olRef.current) return
+
+    const { fromLonLat } = olRef.current
+    const [ouest, sud, est, nord] = zone.bbox
+    const etendue = [...fromLonLat([ouest, sud]), ...fromLonLat([est, nord])]
+
+    // Marge plus généreuse en bas : les contrôles de carte y sont regroupés
+    // sur mobile, et la fiche d'une borne s'ouvre en feuille glissante.
+    const surMobile = window.matchMedia('(max-width: 768px)').matches
+    const marge: [number, number, number, number] = surMobile
+      ? [24, 24, 130, 24]
+      : [70, 80, 70, 80]
+
+    mapInstanceRef.current.getView().fit(etendue, {
+      padding: marge,
+      // Une commune peut être minuscule ; sans plafond, le cadrage
+      // plongerait à un zoom où plus aucune tuile n'est disponible.
+      maxZoom:  15,
+      duration: duree,
+    })
+  }, [zone])
+
+  useEffect(() => {
+    if (!zone) return
+
+    // Ne recadrer qu'au changement de zone. Sans cette garde, un simple
+    // nouveau rendu ramènerait la vue sur la zone et annulerait le
+    // déplacement que l'utilisateur vient de faire à la main.
+    const cle = `${zone.niveau}:${zone.nom}`
+    if (zoneCadreeRef.current === cle) return
+    zoneCadreeRef.current = cle
+
+    cadrerSurZone()
+  }, [zone, mapPrete, cadrerSurZone])
+
   // ── 4. Changement de fond de carte ────────────────────────────
 
   useEffect(() => {
@@ -792,11 +924,14 @@ export function MapCanvas({ points, selectedId, onPickPoint }: MapCanvasProps) {
   // ── 6. Géolocalisation ────────────────────────────────────────
 
   const handleLocate = useCallback(() => {
-    if (!navigator.geolocation || !mapInstanceRef.current || !olRef.current) return
+    if (!mapInstanceRef.current || !olRef.current) return
+    if (!navigator.geolocation) { setGeoErreur('indisponible'); return }
+
     setLocating(true)
+    setGeoErreur(null)
     navigator.geolocation.getCurrentPosition(
       (pos) => {
-        const { fromLonLat, OlFeature, OlPoint, Style, OlIcon } = olRef.current
+        const { fromLonLat, OlFeature, OlPoint, OlCircleGeom, Style, OlIcon, Stroke, Fill } = olRef.current
         const center = fromLonLat([pos.coords.longitude, pos.coords.latitude])
 
         // Centrer + zoomer
@@ -805,6 +940,31 @@ export function MapCanvas({ points, selectedId, onPickPoint }: MapCanvasProps) {
         // Placer / déplacer le marqueur de position
         if (locMarkerSourceRef.current) {
           locMarkerSourceRef.current.clear()
+
+          // Cercle de précision, tracé avant le marqueur pour passer dessous.
+          //
+          // `accuracy` est le rayon en mètres du cercle de confiance à 68 %
+          // annoncé par le navigateur. Il va de quelques mètres avec un vrai
+          // GPS à plusieurs kilomètres en triangulation réseau. Le montrer
+          // est indispensable ici : sans lui, un point bleu posé à 2 km de la
+          // position réelle a exactement la même apparence qu'un point juste,
+          // et un géomètre qui cherche une borne partirait dans la mauvaise
+          // direction en toute confiance.
+          //
+          // Le rayon est exprimé en mètres alors que la vue est en EPSG:3857,
+          // dont l'unité s'étire avec la latitude. Le Cameroun s'étend de 2°
+          // à 13° N, où le facteur d'échelle va de 1,00 à 1,03 : l'écart reste
+          // sous 3 %, négligeable pour un indicateur d'incertitude.
+          const precision = pos.coords.accuracy
+          if (precision && precision > 0) {
+            const cercle = new OlFeature(new OlCircleGeom(center, precision))
+            cercle.setStyle(new Style({
+              fill:   new Fill({ color: 'rgba(66,133,244,0.12)' }),
+              stroke: new Stroke({ color: 'rgba(66,133,244,0.40)', width: 1 }),
+            }))
+            locMarkerSourceRef.current.addFeature(cercle)
+          }
+
           const locFeature = new OlFeature({ geometry: new OlPoint(center) })
           locFeature.setStyle(new Style({
             image: new OlIcon({ src: makeLocMarkerSvg(), anchor: [0.5, 0.5] }),
@@ -814,8 +974,17 @@ export function MapCanvas({ points, selectedId, onPickPoint }: MapCanvasProps) {
 
         setLocating(false)
       },
-      () => setLocating(false),
-      { enableHighAccuracy: true, timeout: 10000 }
+      (err) => {
+        setLocating(false)
+        setGeoErreur(err.code === err.PERMISSION_DENIED ? 'refuse' : 'indisponible')
+      },
+      // enableHighAccuracy : le GPS du téléphone plutôt que la triangulation
+      // réseau, qui peut se tromper de plusieurs kilomètres. Le délai est
+      // porté à 15 s — une première acquisition GPS à froid, sous couvert
+      // forestier, dépasse couramment 10 s. maximumAge accepte un relevé de
+      // moins de 30 s, ce qui évite de refaire une acquisition complète quand
+      // la liste vient déjà de localiser l'utilisateur.
+      { enableHighAccuracy: true, timeout: 15000, maximumAge: 30000 }
     )
   }, [])
 
@@ -831,7 +1000,16 @@ export function MapCanvas({ points, selectedId, onPickPoint }: MapCanvasProps) {
     if (view) view.animate({ zoom: (view.getZoom() ?? DEFAULT_ZOOM) - 1, duration: 200 })
   }, [])
 
-  const centerOnCameroon = useCallback(() => {
+  /**
+   * Repli quand la zone d'intérêt n'a pas pu être chargée.
+   *
+   * `CAMEROON_CENTER` et `DEFAULT_ZOOM` sont deux constantes figées : elles
+   * ne tiennent compte ni du filtre administratif courant, ni du format de
+   * l'écran, et sur un téléphone en portrait le pays débordait largement du
+   * cadre. C'est pourquoi ce n'est plus le comportement du bouton, mais son
+   * dernier recours.
+   */
+  const centrerParDefaut = useCallback(() => {
     if (!mapInstanceRef.current || !olRef.current) return
     const { fromLonLat } = olRef.current
     mapInstanceRef.current.getView().animate({
@@ -840,6 +1018,11 @@ export function MapCanvas({ points, selectedId, onPickPoint }: MapCanvasProps) {
       duration: 600,
     })
   }, [])
+
+  const recadrer = useCallback(() => {
+    if (zone) cadrerSurZone(600)
+    else centrerParDefaut()
+  }, [zone, cadrerSurZone, centrerParDefaut])
 
   // ── Rendu ─────────────────────────────────────────────────────
 
@@ -853,6 +1036,28 @@ export function MapCanvas({ points, selectedId, onPickPoint }: MapCanvasProps) {
         <div className="offline-strip">
           <Icon name="wifi-off" size={14} />
           Mode hors-ligne — tuiles en cache uniquement
+        </div>
+      )}
+
+      {/* Échec de géolocalisation.
+          role="alert" : le bandeau apparaît à distance du bouton qui l'a
+          déclenché, un lecteur d'écran ne le signalerait pas autrement. */}
+      {geoErreur && (
+        <div className="geo-error-strip" role="alert">
+          <Icon name="triangle-alert" size={14} />
+          <span>
+            {geoErreur === 'refuse'
+              ? t('map.geo.refuse')
+              : t('map.geo.introuvable')}
+          </span>
+          <button
+            type="button"
+            onClick={() => setGeoErreur(null)}
+            className="geo-error-close"
+            aria-label={t('map.geo.fermer')}
+          >
+            <Icon name="x" size={13} />
+          </button>
         </div>
       )}
 
@@ -870,12 +1075,47 @@ export function MapCanvas({ points, selectedId, onPickPoint }: MapCanvasProps) {
         </div>
       )}
 
-      {/* ── Barre d'outils (haut-droite) ── */}
+      {/* ── Barre d'outils (colonne, haut-droite) ── */}
       <div className="map-toolbar">
+
+        {/* Filtres — mobile seulement.
+            Sur grand écran le panneau reste déplié à gauche ; sur mobile il
+            est replié, et son seul accès était une icône muette de 32 px
+            noyée parmi quatre autres dans le header.
+
+            L'icône annonce le geste plutôt que la fonction : chevrons vers
+            la droite quand le panneau est fermé — il va sortir par la
+            gauche — et vers la gauche quand il est ouvert, pour le renvoyer
+            d'où il vient. Une icône d'entonnoir fixe dirait « filtres »
+            sans rien dire de ce que fait le clic. */}
+        {onBasculerFiltres && (
+          <button
+            className={`map-tool-btn map-tool-filtres${filtresOuverts ? ' ouvert' : ''}`}
+            onClick={onBasculerFiltres}
+            aria-expanded={filtresOuverts}
+            title={filtresOuverts ? t('header.filtres.hide') : t('header.filtres.show')}
+            aria-label={
+              nbFiltresActifs > 0
+                ? `${filtresOuverts ? t('header.filtres.hide') : t('header.filtres.show')} — ${nbFiltresActifs}`
+                : (filtresOuverts ? t('header.filtres.hide') : t('header.filtres.show'))
+            }
+          >
+            <Icon name={filtresOuverts ? 'panel-left-close' : 'panel-left-open'} size={17} />
+            {nbFiltresActifs > 0 && (
+              <span className="map-tool-pastille" aria-hidden="true">{nbFiltresActifs}</span>
+            )}
+          </button>
+        )}
+
+        {/* Détache les filtres — qui pilotent un panneau — des outils qui
+            agissent sur la carte. Masqué avec le bouton sur grand écran,
+            sans quoi la colonne s'ouvrirait sur un trait orphelin. */}
+        <div className="map-tool-sep map-tool-sep-filtres" />
+
         {/* Pan */}
         <button
-          className={`map-tool-btn${activeTool === 'pan' ? ' active' : ''}`}
-          title={lang === 'fr' ? 'Déplacer' : 'Pan'}
+          className={`map-tool-btn map-tool-pan${activeTool === 'pan' ? ' active' : ''}`}
+          title={t('map.outil.pan')}
           onClick={() => setActiveTool('pan')}
         >
           <Icon name="navigate" size={17} />
@@ -883,8 +1123,8 @@ export function MapCanvas({ points, selectedId, onPickPoint }: MapCanvasProps) {
 
         {/* Mesure */}
         <button
-          className={`map-tool-btn${activeTool === 'measure' ? ' active' : ''}`}
-          title={lang === 'fr' ? 'Mesurer une distance' : 'Measure distance'}
+          className={`map-tool-btn map-tool-mesure${activeTool === 'measure' ? ' active' : ''}`}
+          title={t('map.outil.mesurer')}
           onClick={() => setActiveTool((t) => t === 'measure' ? 'pan' : 'measure')}
         >
           <Icon name="ruler" size={17} />
@@ -892,11 +1132,14 @@ export function MapCanvas({ points, selectedId, onPickPoint }: MapCanvasProps) {
 
         <div className="map-tool-sep" />
 
-        {/* Sélecteur de fond de carte */}
-        <div style={{ position: 'relative' }}>
+        {/* Sélecteur de fond de carte.
+            Le conteneur porte la classe d'ordonnancement, et non le bouton :
+            c'est lui qui est l'enfant direct de la barre, donc le seul que
+            la propriété `order` puisse déplacer. */}
+        <div className="map-tool-couches-wrap" style={{ position: 'relative' }}>
           <button
-            className={`map-tool-btn${showBasemapPicker ? ' active' : ''}`}
-            title={lang === 'fr' ? 'Fond de carte' : 'Basemap'}
+            className={`map-tool-btn map-tool-couches${showBasemapPicker ? ' active' : ''}`}
+            title={t('map.fond')}
             onClick={() => setShowBasemapPicker((v) => !v)}
           >
             <Icon name="layers" size={17} />
@@ -905,7 +1148,7 @@ export function MapCanvas({ points, selectedId, onPickPoint }: MapCanvasProps) {
           {showBasemapPicker && (
             <div className="basemap-picker">
               <div className="basemap-picker-title">
-                {lang === 'fr' ? 'Fond de carte' : 'Basemap'}
+                {t('map.fond')}
               </div>
               {BASEMAPS.map((b) => (
                 <button
@@ -933,8 +1176,9 @@ export function MapCanvas({ points, selectedId, onPickPoint }: MapCanvasProps) {
 
         {/* Géolocalisation */}
         <button
-          className={`map-tool-btn${locating ? ' active' : ''}`}
-          title={lang === 'fr' ? 'Ma position' : 'My location'}
+          className={`map-tool-btn map-tool-gps${locating ? ' active' : ''}`}
+          title={t('map.geo.ma_position')}
+          aria-label={t('map.geo.afficher')}
           onClick={handleLocate}
         >
           <Icon name={locating ? 'loader' : 'crosshair'} size={17}
@@ -943,11 +1187,12 @@ export function MapCanvas({ points, selectedId, onPickPoint }: MapCanvasProps) {
 
         {/* Centrer Cameroun */}
         <button
-          className="map-tool-btn"
-          title={lang === 'fr' ? 'Centrer sur le Cameroun' : 'Center on Cameroon'}
-          onClick={centerOnCameroon}
+          className="map-tool-btn map-tool-cadrer"
+          title={zone ? `${t('map.cadrer_zone')} — ${zone.nom}` : t('map.centrer_pays')}
+          aria-label={zone ? `${t('map.cadrer_zone')} — ${zone.nom}` : t('map.centrer_pays')}
+          onClick={recadrer}
         >
-          <Icon name="map-pin" size={17} />
+          <Icon name="maximize-2" size={17} />
         </button>
       </div>
 
@@ -992,7 +1237,7 @@ export function MapCanvas({ points, selectedId, onPickPoint }: MapCanvasProps) {
           <Icon name="ruler" size={14} />
           {measureText}
           <span style={{ fontSize: 10, opacity: 0.6, fontWeight: 400 }}>
-            — {lang === 'fr' ? 'double-clic pour terminer' : 'double-click to finish'}
+            — {t('map.mesure.fin')}
           </span>
         </div>
       )}
@@ -1008,26 +1253,24 @@ export function MapCanvas({ points, selectedId, onPickPoint }: MapCanvasProps) {
           pointerEvents: 'none',
         }}>
           <Icon name="ruler" size={13} />
-          {lang === 'fr'
-            ? 'Cliquez pour mesurer · double-clic pour terminer'
-            : 'Click to measure · double-click to finish'}
+          {t('map.mesure.aide')}
         </div>
       )}
 
       {/* ── Légende (bas-gauche) ── */}
       <div className="map-legend">
         <div className="legend-title">
-          {lang === 'fr' ? 'Légende' : 'Legend'}
+          {t('map.legende')}
         </div>
 
         {/* ─ Ordre réseau — forme = ordre, couleur = statut ─ */}
         <div className="legend-section-label">
-          {lang === 'fr' ? 'Ordre réseau' : 'Network order'}
+          {t('map.legende.ordre')}
         </div>
         {([
-          { o: 1, label: lang === 'fr' ? '1er ordre'   : '1st order',   sub: lang === 'fr' ? 'Canevas fondamental'  : 'Fundamental framework' },
-          { o: 2, label: lang === 'fr' ? '2ème ordre'  : '2nd order',   sub: lang === 'fr' ? "Réseau d'appui"       : 'Support network'        },
-          { o: 3, label: lang === 'fr' ? '3ème ordre'  : '3rd order',   sub: lang === 'fr' ? 'Densification locale' : 'Local densification'    },
+          { o: 1, label: t('map.ordre.1'),   sub: t('map.ordre.1.sub') },
+          { o: 2, label: t('map.ordre.2'),   sub: t('map.ordre.2.sub')        },
+          { o: 3, label: t('map.ordre.3'),   sub: t('map.ordre.3.sub')    },
         ] as const).map(({ o, label, sub }) => (
           <div key={o} className="legend-item" style={{ alignItems: 'flex-start', gap: 9 }}>
             <OrdreIcon ordre={o} size={14} color="var(--fg-2)" style={{ marginTop: 2, flexShrink: 0 }} />
@@ -1040,14 +1283,14 @@ export function MapCanvas({ points, selectedId, onPickPoint }: MapCanvasProps) {
 
         {/* ─ Statut — couleur du marqueur ─ */}
         <div className="legend-section-label" style={{ marginTop: 8 }}>
-          {lang === 'fr' ? 'Couleur = statut' : 'Color = status'}
+          {t('map.legende.couleur')}
         </div>
         {[
-          { color: '#1F5D3A', label: lang === 'fr' ? 'Conforme (actif)'   : 'Compliant (active)'  },
-          { color: '#D4A017', label: lang === 'fr' ? 'Dégradé (à vérifier)': 'Degraded (to verify)'},
-          { color: '#B83434', label: lang === 'fr' ? 'Détruit'             : 'Destroyed'           },
-          { color: '#9BA5AC', label: lang === 'fr' ? 'Inconnu'             : 'Unknown'             },
-          { color: '#B85729', label: lang === 'fr' ? 'Sélectionné'         : 'Selected'            },
+          { color: '#1F5D3A', label: t('map.statut.actif')  },
+          { color: '#D4A017', label: t('map.statut.degrade')},
+          { color: '#B83434', label: t('map.statut.detruit')           },
+          { color: '#9BA5AC', label: t('map.statut.inconnu')             },
+          { color: '#B85729', label: t('map.statut.selection')            },
         ].map(({ color, label }) => (
           <div key={color} className="legend-item">
             <span className="legend-dot" style={{ background: color }} />
@@ -1057,7 +1300,7 @@ export function MapCanvas({ points, selectedId, onPickPoint }: MapCanvasProps) {
 
         {/* ─ Position utilisateur ─ */}
         <div className="legend-section-label" style={{ marginTop: 8 }}>
-          {lang === 'fr' ? 'Ma position' : 'My location'}
+          {t('map.geo.ma_position')}
         </div>
         <div className="legend-item">
           <span style={{
@@ -1065,7 +1308,7 @@ export function MapCanvas({ points, selectedId, onPickPoint }: MapCanvasProps) {
             background: 'rgba(66,133,244,0.25)', border: '2px solid #4285F4',
             display: 'inline-block',
           }} />
-          <span style={{ fontSize: 11 }}>{lang === 'fr' ? 'Localisation GPS' : 'GPS location'}</span>
+          <span style={{ fontSize: 11 }}>{t('map.legende.gps')}</span>
         </div>
       </div>
     </div>

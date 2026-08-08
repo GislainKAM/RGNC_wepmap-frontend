@@ -31,7 +31,7 @@ function InviteModal({ onClose, onToast }: { onClose: () => void; onToast: (m: s
   const fld: React.CSSProperties = { width: '100%', ...inputSt, height: 34, display: 'block' }
   return (
     <div style={{ position: 'fixed', inset: 0, zIndex: 900, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-      <div onClick={onClose} style={{ position: 'absolute', inset: 0, background: 'rgba(14,27,34,0.5)' }} />
+      <div onClick={onClose} aria-hidden="true" style={{ position: 'absolute', inset: 0, background: 'rgba(14,27,34,0.5)' }} />
       <div style={{ position: 'relative', width: 400, background: 'var(--bg-elevated)', borderRadius: 'var(--radius-md)', boxShadow: 'var(--shadow-lg)', padding: '20px 22px', display: 'flex', flexDirection: 'column', gap: 12 }}>
         <div style={{ fontFamily: 'var(--font-display)', fontSize: 16, fontWeight: 600, color: 'var(--fg-1)' }}>{t('admin.invite.titre')}</div>
         <div>

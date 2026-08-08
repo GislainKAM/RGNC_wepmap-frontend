@@ -50,6 +50,65 @@
   --z-base: 0; --z-map-ui: 100; --z-panel: 200; --z-popover: 600; --z-modal: 800; --z-toast: 900;
 }
 
+/* ── Accessibilité : focus visible ── */
+/*
+ * :focus-visible plutôt que :focus — le navigateur ne montre l'anneau que
+ * lorsque l'utilisateur navigue au clavier, jamais après un clic à la
+ * souris. C'est ce qui permet d'avoir un focus franchement visible sans
+ * gêner l'usage à la souris ; il n'y a donc aucune raison de le retirer.
+ *
+ * --shadow-focus est déjà défini dans les tokens (double anneau : un liseré
+ * clair puis la couleur de marque), il n'était simplement jamais appliqué.
+ */
+:where(a, button, input, select, textarea, summary, [tabindex]):focus-visible {
+  outline: none;
+  box-shadow: var(--shadow-focus);
+  border-radius: var(--radius-sm);
+  position: relative;
+  z-index: 1;                     /* l'anneau passe au-dessus des voisins */
+}
+
+/* Lien d'évitement : premier élément focusable de la page, invisible tant
+ * qu'il n'a pas le focus. Permet d'atteindre le contenu sans traverser
+ * l'en-tête et les filtres à chaque changement de page. */
+.skip-link {
+  /* `fixed` et non `absolute` : ses deux conteneurs (.app et .admin-layout)
+   * portent overflow:hidden. En absolu, le lien n'échappe au rognage que
+   * tant qu'aucun des deux n'est positionné — il suffirait d'ajouter un
+   * position:relative à l'un d'eux pour le faire disparaître sans que rien
+   * ne le signale, puisqu'il n'est visible qu'au clavier. */
+  position: fixed;
+  left: -9999px;
+  top: 0;
+  z-index: var(--z-toast);
+  padding: 10px 16px;
+  background: var(--brand);
+  color: var(--fg-inverse);
+  font-family: var(--font-body);
+  font-size: var(--fs-base);
+  border-radius: 0 0 var(--radius-sm) 0;
+}
+.skip-link:focus {
+  left: 0;
+}
+
+/* ── Accessibilité : mouvement réduit ── */
+/*
+ * Respecte le réglage système « réduire les animations ». Au-delà du confort,
+ * c'est une nécessité pour les personnes sujettes aux troubles vestibulaires,
+ * chez qui les grandes translations (drawer, bottom sheet) provoquent des
+ * vertiges. Les transitions ne sont pas supprimées mais ramenées à une durée
+ * imperceptible : les états restent cohérents, sans déplacement animé.
+ */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
 /* ── Reset & base ── */
 *, *::before, *::after { box-sizing: border-box; }
 html, body { height: 100%; margin: 0; padding: 0; }
@@ -159,6 +218,10 @@ body:has(.page-scrollable) { overflow: auto; }
   transition: all var(--dur-micro) var(--ease-out); position: relative;
 }
 .hdr-icon-btn:hover { background: var(--bg-sunken); color: var(--fg-1); }
+/* Commandes de la recherche mobile : sur grand écran le champ est déjà
+   déplié en permanence, ni le bouton loupe ni le retour n'ont d'objet. */
+.hdr-recherche-ouvrir,
+.hdr-recherche-retour { display: none; }
 .hdr-notif-dot {
   position: absolute; top: 5px; right: 5px;
   width: 7px; height: 7px; border-radius: 50%;
@@ -202,6 +265,14 @@ body:has(.page-scrollable) { overflow: auto; }
 .udrop-name { font-weight: 600; font-size: var(--fs-sm); color: var(--fg-1); }
 .udrop-role { font-size: var(--fs-xs); color: var(--fg-3); margin-top: 1px; }
 .udrop-item {
+  /* Neutralise le style natif du <button> — voir .filter-row. */
+  appearance: none;
+  background: none;
+  border: none;
+  font: inherit;
+  text-align: left;
+  width: 100%;
+
   display: flex; align-items: center; gap: 9px;
   padding: 9px 14px; font-size: var(--fs-sm); color: var(--fg-2);
   cursor: pointer; transition: background var(--dur-micro);
@@ -234,6 +305,9 @@ body:has(.page-scrollable) { overflow: auto; }
 .stat-item .sv.warning { color: var(--rgnc-warning); }
 .stat-item .sv.danger { color: #E88; }
 .stat-meta { margin-left: auto; font-family: var(--font-mono); font-size: 10px; color: rgba(255,255,255,0.3); display: flex; align-items: center; gap: 6px; }
+
+/* Ligne compacte du bandeau — mobile uniquement (voir le point de rupture). */
+.stats-mobile { display: none; }
 
 /* ═══════════════════ MAIN LAYOUT ═══════════════════ */
 .main { flex: 1; display: flex; min-height: 0; position: relative; }
@@ -271,8 +345,22 @@ body:has(.page-scrollable) { overflow: auto; }
   text-transform: uppercase; color: var(--fg-3); margin: 0 0 9px;
 }
 .filter-row {
+  /* Neutralise le style natif du <button> : fond gris, bordure, police
+     système et texte centré. L'élément est un bouton pour l'accessibilité
+     (focus clavier, Entrée/Espace, rôle annoncé), pas pour son apparence. */
+  appearance: none;
+  background: none;
+  border: none;
+  font: inherit;
+  color: var(--fg-2);
+  text-align: left;
+  width: 100%;
+
   display: flex; align-items: center; gap: 9px;
-  padding: 5px 0; font-size: var(--fs-sm); color: var(--fg-2);
+  /* 5px verticaux donnaient une cible de 26px de haut, sous les 44px
+     recommandés au doigt. 9px portent la ligne à ~34px, et l'espacement
+     reste compatible avec la densité du panneau. */
+  padding: 9px 0; font-size: var(--fs-sm);
   cursor: pointer; user-select: none;
   transition: color var(--dur-micro) var(--ease-out);
   border-radius: var(--radius-xs);
@@ -385,6 +473,40 @@ body:has(.page-scrollable) { overflow: auto; }
 .map-tool-btn.active { background: var(--rgnc-foret-700); color: #fff; }
 .map-tool-sep { height: 1px; background: var(--border-subtle); margin: 2px 0; }
 
+/* Le bouton Filtres de la carte n'existe que sur mobile : sur grand écran le
+   panneau est déjà déplié en permanence sur la gauche, un second accès ne
+   ferait que dupliquer une commande visible. */
+.map-tool-filtres { display: none; position: relative; }
+.map-tool-sep-filtres { display: none; }
+
+/* Le fond plein signale l'état ouvert, jamais l'état fermé : dans cette
+   barre, le vert veut déjà dire « actif » (.map-tool-btn.active pour les
+   outils Déplacer et Mesurer). Un bouton vert au repos aurait annoncé un
+   panneau ouvert alors qu'il est replié.
+   Fermé, il se présente donc comme ses voisins ; c'est la pastille qui
+   signale les critères actifs. */
+.map-tool-filtres.ouvert { background: var(--brand); color: #fff; }
+.map-tool-filtres.ouvert:hover { background: var(--rgnc-foret-600); color: #fff; }
+
+/* Nombre de critères actifs. En pastille sur le coin du bouton, faute de
+   place pour un libellé dans une colonne de 44 px : sans elle, rien
+   n'indiquerait qu'un filtre restreint l'affichage une fois le panneau
+   refermé, et une carte presque vide passerait pour un défaut de
+   chargement. */
+.map-tool-pastille {
+  position: absolute;
+  top: -4px; right: -4px;
+  min-width: 17px; height: 17px;
+  padding: 0 4px;
+  border-radius: 9px;
+  background: var(--accent);
+  border: 1.5px solid var(--bg-elevated);
+  color: #fff;
+  font-family: var(--font-body);
+  font-size: 10px; font-weight: 700; line-height: 14px;
+  text-align: center;
+}
+
 .map-zoom {
   position: absolute; bottom: 80px; right: 16px;
   background: rgba(251,250,246,0.93); backdrop-filter: blur(8px);
@@ -400,6 +522,26 @@ body:has(.page-scrollable) { overflow: auto; }
   transition: background var(--dur-micro) var(--ease-out);
 }
 .map-zoom-btn:hover { background: var(--bg-sunken); color: var(--fg-1); }
+
+/* Cibles tactiles de la barre d'outils carte.
+ *
+ * 36 px (outils) et 32 px (zoom) conviennent à la souris mais pas au doigt :
+ * le minimum retenu est 44 px (WCAG 2.5.5 / recommandations Apple et Google).
+ * Le géomètre manipule la carte dehors, souvent d'une seule main et parfois
+ * avec des gants — une cible trop petite se traduit par un zoom raté ou un
+ * changement de fond de plan involontaire.
+ *
+ * Le critère est `pointer: coarse` et non la largeur d'écran : c'est le
+ * moyen de pointage qui impose la taille, pas la taille de l'écran. Une
+ * tablette de terrain de 1024 px reste tactile, tandis qu'une fenêtre de
+ * navigateur étroite sur poste fixe garde à juste titre les petites cibles.
+ *
+ * Seule la zone cliquable grandit : les icônes gardent leur taille, fixée
+ * côté composant. */
+@media (pointer: coarse) {
+  .map-tool-btn { width: 44px; height: 44px; }
+  .map-zoom-btn { width: 44px; height: 44px; font-size: 22px; }
+}
 
 .scalebar {
   position: absolute; bottom: 16px; left: 50%; transform: translateX(-50%);
@@ -479,6 +621,29 @@ body:has(.page-scrollable) { overflow: auto; }
   box-shadow: var(--shadow-sm); z-index: var(--z-map-ui);
 }
 
+/* Bandeau d'échec de géolocalisation.
+ * Décalé de 16 px sous .offline-strip : hors couverture réseau, les deux
+ * conditions se produisent volontiers ensemble et se superposeraient. */
+.geo-error-strip {
+  position: absolute; top: 56px; left: 50%; transform: translateX(-50%);
+  max-width: min(420px, calc(100% - 32px));
+  background: var(--rgnc-danger-bg); border: 1px solid #D9A79C; color: #7A2E1C;
+  padding: 8px 8px 8px 14px; border-radius: var(--radius-pill);
+  font-size: 12px; font-weight: 500; line-height: 1.35;
+  display: inline-flex; align-items: center; gap: 8px;
+  box-shadow: var(--shadow-sm); z-index: var(--z-map-ui);
+}
+.geo-error-close {
+  flex: none;
+  width: 24px; height: 24px; border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  background: transparent; border: none; color: inherit; cursor: pointer;
+}
+.geo-error-close:hover { background: rgba(122,46,28,0.12); }
+@media (pointer: coarse) {
+  .geo-error-close { width: 32px; height: 32px; }
+}
+
 /* Collapse toggle */
 .sidebar-toggle {
   position: absolute; top: 50%; left: 300px; transform: translate(-50%, -50%);
@@ -533,6 +698,21 @@ body:has(.page-scrollable) { overflow: auto; }
 .fiche-kv-item .k { font-size: 10px; letter-spacing: 0.04em; text-transform: uppercase; color: var(--fg-3); }
 .fiche-kv-item .v { font-family: var(--font-mono); font-size: 13px; color: var(--fg-1); margin-top: 2px; font-variant-numeric: tabular-nums; }
 .fiche-kv-item .v.body { font-family: var(--font-body); font-weight: 500; }
+
+/* Bouton de copie des coordonnées. 32 px à la souris, 44 px au doigt : c'est
+ * sur le terrain, téléphone en main, qu'il sert le plus. */
+.fiche-copy-btn {
+  flex: none;
+  width: 32px; height: 32px;
+  display: flex; align-items: center; justify-content: center;
+  background: transparent; border: none; border-radius: var(--radius-sm);
+  color: var(--fg-3); cursor: pointer;
+  transition: background var(--dur-micro) var(--ease-out), color var(--dur-micro) var(--ease-out);
+}
+.fiche-copy-btn:hover { background: var(--bg-sunken); color: var(--fg-1); }
+@media (pointer: coarse) {
+  .fiche-copy-btn { width: 44px; height: 44px; }
+}
 
 .fiche-matter-card {
   display: flex; align-items: center; gap: 12px;
@@ -647,6 +827,14 @@ body:has(.page-scrollable) { overflow: auto; }
 .list-table tbody tr:hover td { background: var(--bg-sunken); cursor: pointer; }
 .list-table .mono-cell { font-family: var(--font-mono); font-variant-numeric: tabular-nums; font-size: 12px; }
 .list-table .muted-cell { color: var(--fg-3); }
+
+.list-vide { text-align: center; padding: 48px 16px; color: var(--fg-3); }
+
+/* Cartes et barre de tri : réservées au mobile, où le tableau ne tient pas.
+   Sur grand écran les dix colonnes s'affichent d'un coup et les en-têtes
+   servent déjà de commande de tri. */
+.list-cartes { display: none; }
+.list-tri    { display: none; }
 
 /* ═══════════════════ LOGIN ═══════════════════ */
 .login-screen { position: fixed; inset: 0; display: flex; background: var(--bg-app); z-index: var(--z-modal); }
@@ -843,50 +1031,95 @@ tr:hover .admin-col-sticky-right {
   .hdr-brand img { height: 24px; }
   .hdr-divider { display: none; }
   .hdr-breadcrumb { display: none; }
-  .hdr-search-wrap {
-    max-width: 160px;
+  /* ── Recherche : repliée en icône, dépliée sur toute la barre ──
+   *
+   * Partagée entre le logo, le fil d'Ariane et cinq contrôles, la barre ne
+   * laissait que 58 px au champ : trois caractères visibles et une invite
+   * (« Code point, lieu, coordonnées… ») entièrement masquée.
+   *
+   * L'état est porté par React et non par `:has(:focus)` comme
+   * précédemment : ce sélecteur n'existe pas avant iOS 16 / Chrome 105, et
+   * surtout il liait l'affichage au focus, si bien que toucher la carte
+   * repliait la barre alors que la recherche était toujours active. */
+  .hdr-search-wrap { display: none; }
+  .hdr-recherche-ouvrir { display: flex; }
+  .hdr-recherche-retour { display: none; }
+
+  .hdr-recherche-ouverte .hdr-brand,
+  .hdr-recherche-ouverte .hdr-right { display: none; }
+  .hdr-recherche-ouverte .hdr-recherche-retour {
+    display: flex; align-items: center; justify-content: center;
+    width: 40px; height: 40px; flex: none;
+    background: transparent; border: none; border-radius: var(--radius-sm);
+    color: var(--fg-2); cursor: pointer;
+  }
+  .hdr-recherche-ouverte .hdr-search-wrap {
+    display: flex;
     flex: 1;
+    max-width: none;
     margin-left: 0;
   }
+
   /* font-size: 16px → empêche le zoom automatique iOS sur les inputs focalisés  */
   /* (iOS zoome si font-size < 16px → décale la carte, masque le texte saisi)    */
   .hdr-search {
-    padding: 0 10px 0 32px;
+    padding: 0 12px 0 34px;
     font-size: 16px;
-    height: 36px;
+    height: 40px;
     -webkit-text-fill-color: var(--fg-1);  /* iOS ne peut pas écraser la couleur */
   }
   .hdr-search-kbd { display: none; }
 
-  /* ── Recherche mobile : plein écran quand l'input est actif ── */
-  /* :has() est supporté sur iOS 16+, Chrome Android 105+         */
-  .hdr:has(.hdr-search:focus) {
-    /* Le header devient une barre de recherche pure */
-  }
-  .hdr:has(.hdr-search:focus) .hdr-brand  { display: none; }
-  .hdr:has(.hdr-search:focus) .hdr-right  { display: none; }
-  .hdr:has(.hdr-search:focus) .hdr-search-wrap {
-    max-width: none;
-    flex: 1;
-  }
-
   /* Masquer items non essentiels de la barre droite */
   .lang-toggle { display: none; }
+  /* Les filtres s'ouvrent depuis la carte, par un bouton libellé : garder
+     ici une seconde icône, muette et de 32 px, brouillait l'accès. */
+  .hdr-btn-filtres { display: none; }
 
   /* View switch : icônes seulement */
   .view-switch-btn { padding: 5px 8px; }
   .view-switch-btn .vsw-label { display: none; }
 
-  /* Stats strip : scroll horizontal silencieux */
+  /* ── Bandeau : une ligne qui tient, au lieu de six qui débordent ── */
   .stats-strip {
-    overflow-x: auto; overflow-y: hidden;
-    flex-wrap: nowrap; padding: 0 12px;
-    height: 38px;
+    height: 34px;
+    padding: 0 12px;
+    overflow: hidden;          /* plus de défilement masqué */
   }
-  .stats-strip::-webkit-scrollbar { display: none; }
-  .stat-item { padding: 0 12px; white-space: nowrap; flex-shrink: 0; }
-  .stat-item:first-child { padding-left: 0; }
-  .stat-meta { display: none; }
+  /* Les colonnes du grand écran cèdent la place à la ligne compacte. */
+  .stat-item, .stat-meta { display: none; }
+
+  .stats-mobile {
+    display: flex; align-items: center; gap: 10px;
+    width: 100%;
+    font-family: var(--font-body); font-size: 12px;
+    color: rgba(255,255,255,0.55);
+  }
+  /* La zone peut porter un nom long (« Nyong - Et - Mfoumou ») : elle prend
+     la place disponible et se tronque, les compteurs restant prioritaires. */
+  .stats-mobile-zone {
+    flex: 1 1 auto; min-width: 0;
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    color: #fff; font-weight: 600;
+  }
+  .stats-mobile-nb { flex: none; font-family: var(--font-mono); color: #fff; font-size: 12px; }
+  .stats-mobile-total { color: rgba(255,255,255,0.35); margin-left: 2px; }
+  .stats-mobile-puces { flex: none; display: flex; align-items: center; gap: 8px; }
+  /* Pastille colorée + nombre : le statut se lit d'un coup d'œil sans
+     dépenser la largeur qu'exigeraient les libellés « Conformes », etc. */
+  .stats-mobile-puces .sp {
+    font-family: var(--font-mono); font-size: 11px; font-weight: 600;
+    display: inline-flex; align-items: center; gap: 4px;
+  }
+  .stats-mobile-puces .sp::before {
+    content: ''; width: 7px; height: 7px; border-radius: 50%; display: inline-block;
+  }
+  .sp-ok     { color: var(--rgnc-foret-300); }
+  .sp-warn   { color: var(--rgnc-warning); }
+  .sp-danger { color: #E88; }
+  .sp-ok::before     { background: var(--rgnc-foret-300); }
+  .sp-warn::before   { background: var(--rgnc-warning); }
+  .sp-danger::before { background: #E88; }
 
   /* ── Layout principal ── */
   .main { flex-direction: column; }
@@ -961,17 +1194,122 @@ tr:hover .admin-col-sticky-right {
     margin: 8px auto 0;
   }
 
-  /* ── Map toolbar : réduire ── */
+  /* ── Contrôles de carte ──
+   *
+   * La barre reste une colonne en haut à droite, identique au grand écran :
+   * une seule disposition à apprendre, quel que soit le support.
+   *
+   * Le bouton Filtres la coiffe. C'est le seul accès au panneau sur mobile,
+   * l'icône du header y étant masquée pour ne pas dédoubler la commande. */
   .map-toolbar { top: 12px; right: 12px; }
-  .map-zoom { bottom: 74px; right: 12px; }
+  .map-tool-filtres { display: flex; }
+  .map-tool-sep-filtres { display: block; }
+
+  /* Zoom : ramené dans le coin, à portée de pouce, au lieu de flotter à
+     mi-hauteur. `env(safe-area-inset-bottom)` écarte la barre de geste des
+     téléphones sans bouton d'accueil, qui recouvrait les commandes. */
+  .map-zoom {
+    right: 12px;
+    bottom: calc(16px + env(safe-area-inset-bottom));
+  }
+
   .coord-tracker { display: none; }
-  .scalebar { bottom: 12px; font-size: 10px; padding: 4px 10px; }
+  /* Échelle à gauche : centrée, elle passait sous le bloc de zoom. */
+  .scalebar {
+    bottom: calc(16px + env(safe-area-inset-bottom));
+    left: 12px;
+    transform: none;
+    font-size: 10px; padding: 4px 10px;
+  }
   .map-legend { display: none; } /* Trop petit sur mobile */
 
-  /* ── List view ── */
-  .list-toolbar { padding: 10px 16px; }
-  .list-table-wrap { padding: 12px 16px; }
-  .list-table-wrap { overflow-x: auto; }
+  /* ── Vue liste : cartes au lieu du tableau ──
+   *
+   * Le tableau compte dix colonnes. Sur 375 px il ne se lisait qu'en le
+   * faisant défiler latéralement, une colonne à la fois — impossible de
+   * comparer deux bornes, et le matricule disparaissait dès qu'on allait
+   * voir les coordonnées.
+   *
+   * Les cartes reprennent ce qui sert d'abord sur le terrain : matricule,
+   * état, désignation, ordre, commune, distance, coordonnées. Altitude,
+   * matériau détaillé et région restent dans la fiche, à un appui. */
+  .list-toolbar { padding: 10px 16px; flex-wrap: wrap; gap: 8px; }
+  .list-table-wrap { padding: 10px 12px 24px; overflow-x: hidden; }
+  .list-table { display: none; }
+  .list-cartes { display: flex; flex-direction: column; gap: 8px; list-style: none; margin: 0; padding: 0; }
+
+  .list-carte {
+    display: flex; flex-direction: column; gap: 5px;
+    width: 100%;
+    padding: 12px 14px;
+    background: var(--bg-elevated);
+    border: 1px solid var(--border-subtle);
+    border-radius: var(--radius-sm);
+    text-align: left;
+    font-family: var(--font-body);
+    cursor: pointer;
+    /* La carte entière est le bouton : au doigt, viser une ligne de tableau
+       de 36 px demandait de la précision, ici la cible fait toute la carte. */
+    min-height: 44px;
+  }
+  .list-carte:active { background: var(--bg-sunken); }
+
+  .lc-ligne1 { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+  .lc-matricule {
+    font-family: var(--font-mono); font-weight: 600; font-size: 14px;
+    color: var(--fg-1); letter-spacing: 0.02em;
+  }
+  .lc-nom {
+    font-size: 13px; font-weight: 500; color: var(--fg-1);
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  }
+  .lc-ligne3 {
+    display: flex; align-items: center; gap: 6px;
+    font-size: 12px; color: var(--fg-3);
+  }
+  .lc-ordre { display: inline-flex; align-items: center; gap: 4px; flex: none; }
+  .lc-sep   { color: var(--fg-4); }
+  .lc-lieu  { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  /* La distance est poussée à droite : c'est la valeur qu'on balaie du
+     regard quand la liste est triée par proximité. */
+  .lc-distance {
+    margin-left: auto; flex: none;
+    font-family: var(--font-mono); font-weight: 600;
+    color: var(--rgnc-foret-700);
+  }
+  .lc-coords {
+    display: flex; align-items: center; gap: 8px;
+    font-family: var(--font-mono); font-size: 11px;
+    color: var(--fg-3); font-variant-numeric: tabular-nums;
+  }
+  .lc-materiau { margin-left: auto; font-family: var(--font-body); }
+
+  /* ── Barre de tri ── */
+  .list-tri {
+    display: flex; align-items: center; gap: 8px;
+    padding: 8px 16px;
+    background: var(--bg-surface);
+    border-bottom: 1px solid var(--border-subtle);
+    flex-shrink: 0;
+  }
+  .list-tri-label { font-size: 12px; color: var(--fg-3); flex: none; }
+  .list-tri-select {
+    flex: 1; min-width: 0; height: 36px;
+    padding: 0 8px;
+    border: 1px solid var(--border-subtle); border-radius: var(--radius-sm);
+    background: var(--bg-elevated); color: var(--fg-1);
+    font-family: var(--font-body);
+    /* 16px : en deçà, iOS zoome à l'ouverture du sélecteur et la mise en
+       page se décale. */
+    font-size: 16px;
+  }
+  .list-tri-sens {
+    flex: none; width: 40px; height: 36px;
+    display: flex; align-items: center; justify-content: center;
+    border: 1px solid var(--border-subtle); border-radius: var(--radius-sm);
+    background: var(--bg-elevated); color: var(--fg-2);
+    cursor: pointer;
+  }
 
   /* ── Login : empiler verticalement ── */
   .login-screen { flex-direction: column; }

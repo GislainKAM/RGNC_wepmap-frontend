@@ -5,7 +5,7 @@
 'use client'
 
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { pointApi } from '@/lib/api'
+import { pointApi, zoneInteretApi } from '@/lib/api'
 import type { FiltresCarteState, PointGeodesiqueDetail } from '@/lib/types'
 
 // Clés de cache Query
@@ -26,6 +26,28 @@ export function usePointsGeoJSON(filtres: Partial<FiltresCarteState> = {}) {
     staleTime: 5  * 60 * 1000,
     gcTime:    15 * 60 * 1000,   // Conserve en mémoire 15 min après inactivité
     retry:     2,
+  })
+}
+
+/**
+ * Zone d'intérêt — emprise mise en évidence sur la carte.
+ *
+ * La clé de cache ne retient que les trois identifiants administratifs, et
+ * non l'objet de filtres entier : sans cela, cocher un statut invaliderait
+ * le cache et provoquerait un rechargement du contour, donc un recadrage
+ * visible de la carte alors que le territoire observé n'a pas changé.
+ *
+ * Les géométries administratives ne bougeant qu'au rechargement des couches,
+ * la donnée est considérée comme fraîche pendant une heure.
+ */
+export function useZoneInteret(filtres: Partial<FiltresCarteState> = {}) {
+  const { regionId = null, departementId = null, communeId = null } = filtres
+  return useQuery({
+    queryKey:  ['zone-interet', regionId, departementId, communeId],
+    queryFn:   () => zoneInteretApi.get({ regionId, departementId, communeId }),
+    staleTime: 60 * 60 * 1000,
+    gcTime:    60 * 60 * 1000,
+    retry:     1,
   })
 }
 

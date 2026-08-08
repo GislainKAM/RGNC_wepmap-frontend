@@ -137,7 +137,7 @@ function PrefModal({ onClose, t, lang, setLang }: {
   return (
     <div style={{ position: 'fixed', inset: 0, zIndex: 600, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
       {/* Backdrop */}
-      <div onClick={onClose} style={{ position: 'absolute', inset: 0, background: 'rgba(14,27,34,0.45)' }} />
+      <div onClick={onClose} aria-hidden="true" style={{ position: 'absolute', inset: 0, background: 'rgba(14,27,34,0.45)' }} />
 
       {/* Panneau */}
       <div style={{
@@ -274,10 +274,21 @@ export function Header({
   const [dropOpen,   setDropOpen]   = useState(false)
   const [notifOpen,  setNotifOpen]  = useState(false)
   const [prefOpen,   setPrefOpen]   = useState(false)
+  // Recherche mobile dépliée. Sur grand écran le champ est toujours visible
+  // et cet état reste sans effet.
+  const [rechercheOuverte, setRechercheOuverte] = useState(false)
 
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const dropRef     = useRef<HTMLDivElement>(null)
   const notifRef    = useRef<HTMLDivElement>(null)
+  const champRef    = useRef<HTMLInputElement>(null)
+
+  // Le champ n'existe visuellement qu'une fois déplié : on lui donne le
+  // focus après le rendu, sinon l'utilisateur doit taper une seconde fois
+  // pour faire apparaître le clavier.
+  useEffect(() => {
+    if (rechercheOuverte) champRef.current?.focus()
+  }, [rechercheOuverte])
 
   const handleSearch = useCallback(
     (val: string) => {
@@ -314,7 +325,18 @@ export function Header({
 
   return (
     <>
-      <header className="hdr">
+      <header className={`hdr${rechercheOuverte ? ' hdr-recherche-ouverte' : ''}`}>
+
+        {/* Retour — mobile, recherche dépliée. Le bouton système « précédent »
+            d'Android quitterait la page entière ; il faut une sortie propre
+            qui ne fasse que replier le champ. */}
+        <button
+          className="hdr-recherche-retour"
+          onClick={() => setRechercheOuverte(false)}
+          aria-label={t('header.recherche.fermer')}
+        >
+          <Icon name="arrow-left" size={18} />
+        </button>
 
         {/* ── Logo ── */}
         <Link href={ROUTES.MAP} className="hdr-brand" style={{ textDecoration: 'none' }}>
@@ -339,19 +361,34 @@ export function Header({
         <div className="hdr-search-wrap">
           <span className="hdr-search-ico"><Icon name="search" size={15} /></span>
           <input
+            ref={champRef}
             className="hdr-search"
             placeholder={t('header.search')}
             value={searchVal}
             onChange={(e) => handleSearch(e.target.value)}
+            onKeyDown={(e) => { if (e.key === 'Escape') setRechercheOuverte(false) }}
           />
           <span className="hdr-search-kbd">⌘ K</span>
         </div>
 
         <div className="hdr-right">
 
+          {/* Déplier la recherche — mobile seulement.
+              Le champ tenait dans 58 px une fois la barre partagée avec le
+              logo et cinq contrôles : ni le texte saisi ni l'invite n'y
+              étaient lisibles. Replié en icône, il occupe toute la barre
+              quand on en a besoin. */}
+          <button
+            className="hdr-icon-btn hdr-recherche-ouvrir"
+            aria-label={t('header.recherche.ouvrir')}
+            onClick={() => setRechercheOuverte(true)}
+          >
+            <Icon name="search" size={18} />
+          </button>
+
           {/* Toggle filtres */}
           <button
-            className="hdr-icon-btn"
+            className="hdr-icon-btn hdr-btn-filtres"
             title={filtersCollapsed ? t('header.filtres.show') : t('header.filtres.hide')}
             onClick={onToggleFilters}
           >
@@ -450,13 +487,13 @@ export function Header({
 
                 {isAuth
                   ? (
-                    <div className="udrop-item danger" onClick={handleLogout}>
+                    <button type="button" className="udrop-item danger" onClick={handleLogout}>
                       <Icon name="log-out" size={14} /> {t('header.deconnexion')}
-                    </div>
+                    </button>
                   ) : (
-                    <div className="udrop-item" onClick={() => { setDropOpen(false); router.push(ROUTES.LOGIN) }}>
+                    <button type="button" className="udrop-item" onClick={() => { setDropOpen(false); router.push(ROUTES.LOGIN) }}>
                       <Icon name="log-out" size={14} /> {t('header.connexion')}
-                    </div>
+                    </button>
                   )
                 }
               </div>
