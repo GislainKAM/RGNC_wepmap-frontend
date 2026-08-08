@@ -75,6 +75,23 @@ export default function MapPage() {
 
   const visibleCount = geojson?.features?.length ?? 0
 
+  /**
+   * Nombre de critères actifs, affiché en pastille sur le bouton Filtres.
+   *
+   * Sur mobile le panneau est fermé par défaut : sans ce compteur, rien
+   * n'indique qu'un filtre restreint l'affichage, et une carte presque vide
+   * passe pour un défaut de chargement. La recherche est comptée aussi — le
+   * champ du header est réduit à une icône sur mobile, donc invisible.
+   */
+  const nbFiltresActifs =
+    (filters.statuts.length      ? 1 : 0) +
+    (filters.ordres.length       ? 1 : 0) +
+    (filters.regionId            ? 1 : 0) +
+    (filters.departementId       ? 1 : 0) +
+    (filters.communeId           ? 1 : 0) +
+    (filters.reseau              ? 1 : 0) +
+    (filters.recherche.trim()    ? 1 : 0)
+
   return (
     <div className="app">
       <SkipLink />
@@ -85,7 +102,7 @@ export default function MapPage() {
         onToggleFilters={() => setFiltersCollapsed((c) => !c)}
         filtersCollapsed={filtersCollapsed}
       />
-      <StatsStrip stats={stats ?? null} visibleCount={visibleCount} />
+      <StatsStrip stats={stats ?? null} visibleCount={visibleCount} zone={zone ?? null} />
 
       <div className="main" id={ANCRE_CONTENU} tabIndex={-1}>
         {/* Filters sidebar */}
@@ -107,6 +124,8 @@ export default function MapPage() {
             selectedId={selectedId}
             onPickPoint={handlePickPoint}
             zone={zone ?? null}
+            onOuvrirFiltres={() => setFiltersCollapsed(false)}
+            nbFiltresActifs={nbFiltresActifs}
           />
         ) : (
           <PointList

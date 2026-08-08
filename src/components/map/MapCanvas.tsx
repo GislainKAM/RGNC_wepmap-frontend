@@ -16,6 +16,10 @@ interface MapCanvasProps {
   onPickPoint: (id: number) => void
   /** Emprise à mettre en évidence ; le reste de la carte est assombri. */
   zone?:       ZoneInteret | null
+  /** Ouvre le panneau de filtres — utilisé par le bouton mobile de la carte. */
+  onOuvrirFiltres?: () => void
+  /** Nombre de critères actifs, affiché en pastille sur ce bouton. */
+  nbFiltresActifs?: number
 }
 
 type Tool    = 'pan' | 'measure'
@@ -256,7 +260,10 @@ function niceDistance(meters: number): string {
 
 // ── Composant ────────────────────────────────────────────────────
 
-export function MapCanvas({ points, selectedId, onPickPoint, zone }: MapCanvasProps) {
+export function MapCanvas({
+  points, selectedId, onPickPoint, zone,
+  onOuvrirFiltres, nbFiltresActifs = 0,
+}: MapCanvasProps) {
   const { t } = useLanguage()
 
   // Map refs
@@ -801,8 +808,39 @@ export function MapCanvas({ points, selectedId, onPickPoint, zone }: MapCanvasPr
     }
   }, [zone, mapPrete])
 
-  useEffect(() => {
+  /**
+   * Ajuste la vue sur l'emprise de la zone d'intérêt.
+   *
+   * Partagé par le recadrage automatique (au changement de filtre) et par le
+   * bouton de la barre d'outils, pour que les deux donnent exactement le
+   * même cadrage — un bouton qui recentre autrement que l'affichage initial
+   * désoriente plus qu'il n'aide.
+   */
+  const cadrerSurZone = useCallback((duree = 700) => {
     if (!zone || !mapInstanceRef.current || !olRef.current) return
+
+    const { fromLonLat } = olRef.current
+    const [ouest, sud, est, nord] = zone.bbox
+    const etendue = [...fromLonLat([ouest, sud]), ...fromLonLat([est, nord])]
+
+    // Marge plus généreuse en bas : les contrôles de carte y sont regroupés
+    // sur mobile, et la fiche d'une borne s'ouvre en feuille glissante.
+    const surMobile = window.matchMedia('(max-width: 768px)').matches
+    const marge: [number, number, number, number] = surMobile
+      ? [24, 24, 130, 24]
+      : [70, 80, 70, 80]
+
+    mapInstanceRef.current.getView().fit(etendue, {
+      padding: marge,
+      // Une commune peut être minuscule ; sans plafond, le cadrage
+      // plongerait à un zoom où plus aucune tuile n'est disponible.
+      maxZoom:  15,
+      duration: duree,
+    })
+  }, [zone])
+
+  useEffect(() => {
+    if (!zone) return
 
     // Ne recadrer qu'au changement de zone. Sans cette garde, un simple
     // nouveau rendu ramènerait la vue sur la zone et annulerait le
@@ -811,21 +849,8 @@ export function MapCanvas({ points, selectedId, onPickPoint, zone }: MapCanvasPr
     if (zoneCadreeRef.current === cle) return
     zoneCadreeRef.current = cle
 
-    const { fromLonLat } = olRef.current
-    const [ouest, sud, est, nord] = zone.bbox
-    const etendue = [...fromLonLat([ouest, sud]), ...fromLonLat([est, nord])]
-
-    mapInstanceRef.current.getView().fit(etendue, {
-      // Marge asymétrique : le panneau de filtres mord sur la gauche et la
-      // barre d'outils sur la droite. Sans elle, le bord de la zone se
-      // retrouve caché derrière l'interface.
-      padding:  [70, 80, 70, 80],
-      // Une commune peut être minuscule ; sans plafond, le cadrage
-      // plongerait à un zoom où plus aucune tuile n'est disponible.
-      maxZoom:  15,
-      duration: 700,
-    })
-  }, [zone, mapPrete])
+    cadrerSurZone()
+  }, [zone, mapPrete, cadrerSurZone])
 
   // ── 4. Changement de fond de carte ────────────────────────────
 
@@ -973,7 +998,16 @@ export function MapCanvas({ points, selectedId, onPickPoint, zone }: MapCanvasPr
     if (view) view.animate({ zoom: (view.getZoom() ?? DEFAULT_ZOOM) - 1, duration: 200 })
   }, [])
 
-  const centerOnCameroon = useCallback(() => {
+  /**
+   * Repli quand la zone d'intérêt n'a pas pu être chargée.
+   *
+   * `CAMEROON_CENTER` et `DEFAULT_ZOOM` sont deux constantes figées : elles
+   * ne tiennent compte ni du filtre administratif courant, ni du format de
+   * l'écran, et sur un téléphone en portrait le pays débordait largement du
+   * cadre. C'est pourquoi ce n'est plus le comportement du bouton, mais son
+   * dernier recours.
+   */
+  const centrerParDefaut = useCallback(() => {
     if (!mapInstanceRef.current || !olRef.current) return
     const { fromLonLat } = olRef.current
     mapInstanceRef.current.getView().animate({
@@ -982,6 +1016,11 @@ export function MapCanvas({ points, selectedId, onPickPoint, zone }: MapCanvasPr
       duration: 600,
     })
   }, [])
+
+  const recadrer = useCallback(() => {
+    if (zone) cadrerSurZone(600)
+    else centrerParDefaut()
+  }, [zone, cadrerSurZone, centrerParDefaut])
 
   // ── Rendu ─────────────────────────────────────────────────────
 
@@ -1034,11 +1073,40 @@ export function MapCanvas({ points, selectedId, onPickPoint, zone }: MapCanvasPr
         </div>
       )}
 
-      {/* ── Barre d'outils (haut-droite) ── */}
+      {/* ── Barre d'outils ── */}
+      {/* Colonne en haut à droite sur grand écran ; rangée en bas, à portée
+          de pouce, sur mobile (voir .map-toolbar dans globals.css). */}
       <div className="map-toolbar">
-        {/* Pan */}
+
+        {/* Filtres — mobile seulement.
+            Sur grand écran le panneau est ouvert en permanence à gauche ;
+            sur mobile il est replié et son seul accès était une icône de
+            32 px noyée parmi quatre autres dans le header. D'où cette
+            entrée libellée, dans la zone du pouce, qui indique en outre
+            combien de critères sont actifs. */}
+        {onOuvrirFiltres && (
+          <button
+            className="map-tool-btn map-tool-filtres"
+            onClick={onOuvrirFiltres}
+            aria-label={
+              nbFiltresActifs > 0
+                ? `${t('map.filtres')} — ${nbFiltresActifs}`
+                : t('map.filtres')
+            }
+          >
+            <Icon name="filter" size={16} />
+            <span className="map-tool-libelle">{t('map.filtres')}</span>
+            {nbFiltresActifs > 0 && (
+              <span className="map-tool-pastille" aria-hidden="true">{nbFiltresActifs}</span>
+            )}
+          </button>
+        )}
+
+        {/* Pan — masqué au doigt : sur un écran tactile, faire glisser
+            déplace toujours la carte. Ce bouton ne sert qu'à quitter l'outil
+            de mesure, ce que le bouton Mesure fait déjà en bascule. */}
         <button
-          className={`map-tool-btn${activeTool === 'pan' ? ' active' : ''}`}
+          className={`map-tool-btn map-tool-pan${activeTool === 'pan' ? ' active' : ''}`}
           title={t('map.outil.pan')}
           onClick={() => setActiveTool('pan')}
         >
@@ -1047,7 +1115,7 @@ export function MapCanvas({ points, selectedId, onPickPoint, zone }: MapCanvasPr
 
         {/* Mesure */}
         <button
-          className={`map-tool-btn${activeTool === 'measure' ? ' active' : ''}`}
+          className={`map-tool-btn map-tool-mesure${activeTool === 'measure' ? ' active' : ''}`}
           title={t('map.outil.mesurer')}
           onClick={() => setActiveTool((t) => t === 'measure' ? 'pan' : 'measure')}
         >
@@ -1056,10 +1124,13 @@ export function MapCanvas({ points, selectedId, onPickPoint, zone }: MapCanvasPr
 
         <div className="map-tool-sep" />
 
-        {/* Sélecteur de fond de carte */}
-        <div style={{ position: 'relative' }}>
+        {/* Sélecteur de fond de carte.
+            Le conteneur porte la classe d'ordonnancement, et non le bouton :
+            c'est lui qui est l'enfant direct de la barre, donc le seul que
+            la propriété `order` puisse déplacer. */}
+        <div className="map-tool-couches-wrap" style={{ position: 'relative' }}>
           <button
-            className={`map-tool-btn${showBasemapPicker ? ' active' : ''}`}
+            className={`map-tool-btn map-tool-couches${showBasemapPicker ? ' active' : ''}`}
             title={t('map.fond')}
             onClick={() => setShowBasemapPicker((v) => !v)}
           >
@@ -1097,7 +1168,7 @@ export function MapCanvas({ points, selectedId, onPickPoint, zone }: MapCanvasPr
 
         {/* Géolocalisation */}
         <button
-          className={`map-tool-btn${locating ? ' active' : ''}`}
+          className={`map-tool-btn map-tool-gps${locating ? ' active' : ''}`}
           title={t('map.geo.ma_position')}
           aria-label={t('map.geo.afficher')}
           onClick={handleLocate}
@@ -1108,11 +1179,12 @@ export function MapCanvas({ points, selectedId, onPickPoint, zone }: MapCanvasPr
 
         {/* Centrer Cameroun */}
         <button
-          className="map-tool-btn"
-          title={t('map.centrer_pays')}
-          onClick={centerOnCameroon}
+          className="map-tool-btn map-tool-cadrer"
+          title={zone ? `${t('map.cadrer_zone')} — ${zone.nom}` : t('map.centrer_pays')}
+          aria-label={zone ? `${t('map.cadrer_zone')} — ${zone.nom}` : t('map.centrer_pays')}
+          onClick={recadrer}
         >
-          <Icon name="map-pin" size={17} />
+          <Icon name="maximize-2" size={17} />
         </button>
       </div>
 

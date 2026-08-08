@@ -28,6 +28,8 @@ const en: Record<TranslationKey, string> = {
   'header.pref.save':          'Save',
   'header.pref.saved':         'Saved!',
   'header.pref.cancel':        'Cancel',
+  'header.recherche.ouvrir':   "Search",
+  'header.recherche.fermer':   "Close search",
 
   // ── Carte ───────────────────────────────────────────────────────
   'map.geo.refuse':       'Location denied — allow position access in your browser settings.',
@@ -56,6 +58,9 @@ const en: Record<TranslationKey, string> = {
   'map.statut.inconnu':   'Unknown',
   'map.statut.selection': 'Selected',
   'map.legende.gps':      'GPS location',
+  'map.cadrer_zone':      "Zoom to area of interest",
+  'map.filtres':          "Filters",
+  'stats.zone_courante':  "Area",
 
   // ── Filtres ──────────────────────────────────────────────────────
   'filters.title':          'Filters',

@@ -26,6 +26,8 @@ const fr = {
   'header.pref.save':          'Enregistrer',
   'header.pref.saved':         'Enregistré !',
   'header.pref.cancel':        'Annuler',
+  'header.recherche.ouvrir':   "Rechercher",
+  'header.recherche.fermer':   "Fermer la recherche",
 
   // ── Carte ───────────────────────────────────────────────────────
   'map.geo.refuse':       'Localisation refusée — autorisez l’accès à la position dans les réglages du navigateur.',
@@ -54,6 +56,9 @@ const fr = {
   'map.statut.inconnu':   'Inconnu',
   'map.statut.selection': 'Sélectionné',
   'map.legende.gps':      'Localisation GPS',
+  'map.cadrer_zone':      "Cadrer sur la zone d'intérêt",
+  'map.filtres':          "Filtres",
+  'stats.zone_courante':  "Zone",
 
   // ── Filtres ──────────────────────────────────────────────────────
   'filters.title':          'Filtres',

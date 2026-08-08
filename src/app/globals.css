@@ -218,6 +218,10 @@ body:has(.page-scrollable) { overflow: auto; }
   transition: all var(--dur-micro) var(--ease-out); position: relative;
 }
 .hdr-icon-btn:hover { background: var(--bg-sunken); color: var(--fg-1); }
+/* Commandes de la recherche mobile : sur grand écran le champ est déjà
+   déplié en permanence, ni le bouton loupe ni le retour n'ont d'objet. */
+.hdr-recherche-ouvrir,
+.hdr-recherche-retour { display: none; }
 .hdr-notif-dot {
   position: absolute; top: 5px; right: 5px;
   width: 7px; height: 7px; border-radius: 50%;
@@ -301,6 +305,9 @@ body:has(.page-scrollable) { overflow: auto; }
 .stat-item .sv.warning { color: var(--rgnc-warning); }
 .stat-item .sv.danger { color: #E88; }
 .stat-meta { margin-left: auto; font-family: var(--font-mono); font-size: 10px; color: rgba(255,255,255,0.3); display: flex; align-items: center; gap: 6px; }
+
+/* Ligne compacte du bandeau — mobile uniquement (voir le point de rupture). */
+.stats-mobile { display: none; }
 
 /* ═══════════════════ MAIN LAYOUT ═══════════════════ */
 .main { flex: 1; display: flex; min-height: 0; position: relative; }
@@ -465,6 +472,12 @@ body:has(.page-scrollable) { overflow: auto; }
 .map-tool-btn:hover { background: var(--bg-sunken); color: var(--fg-1); }
 .map-tool-btn.active { background: var(--rgnc-foret-700); color: #fff; }
 .map-tool-sep { height: 1px; background: var(--border-subtle); margin: 2px 0; }
+
+/* Le bouton Filtres de la carte n'existe que sur mobile : sur grand écran le
+   panneau est déjà déplié en permanence sur la gauche, un second accès ne
+   ferait que dupliquer une commande visible. */
+.map-tool-filtres { display: none; }
+.map-tool-libelle { display: none; }
 
 .map-zoom {
   position: absolute; bottom: 80px; right: 16px;
@@ -982,50 +995,95 @@ tr:hover .admin-col-sticky-right {
   .hdr-brand img { height: 24px; }
   .hdr-divider { display: none; }
   .hdr-breadcrumb { display: none; }
-  .hdr-search-wrap {
-    max-width: 160px;
+  /* ── Recherche : repliée en icône, dépliée sur toute la barre ──
+   *
+   * Partagée entre le logo, le fil d'Ariane et cinq contrôles, la barre ne
+   * laissait que 58 px au champ : trois caractères visibles et une invite
+   * (« Code point, lieu, coordonnées… ») entièrement masquée.
+   *
+   * L'état est porté par React et non par `:has(:focus)` comme
+   * précédemment : ce sélecteur n'existe pas avant iOS 16 / Chrome 105, et
+   * surtout il liait l'affichage au focus, si bien que toucher la carte
+   * repliait la barre alors que la recherche était toujours active. */
+  .hdr-search-wrap { display: none; }
+  .hdr-recherche-ouvrir { display: flex; }
+  .hdr-recherche-retour { display: none; }
+
+  .hdr-recherche-ouverte .hdr-brand,
+  .hdr-recherche-ouverte .hdr-right { display: none; }
+  .hdr-recherche-ouverte .hdr-recherche-retour {
+    display: flex; align-items: center; justify-content: center;
+    width: 40px; height: 40px; flex: none;
+    background: transparent; border: none; border-radius: var(--radius-sm);
+    color: var(--fg-2); cursor: pointer;
+  }
+  .hdr-recherche-ouverte .hdr-search-wrap {
+    display: flex;
     flex: 1;
+    max-width: none;
     margin-left: 0;
   }
+
   /* font-size: 16px → empêche le zoom automatique iOS sur les inputs focalisés  */
   /* (iOS zoome si font-size < 16px → décale la carte, masque le texte saisi)    */
   .hdr-search {
-    padding: 0 10px 0 32px;
+    padding: 0 12px 0 34px;
     font-size: 16px;
-    height: 36px;
+    height: 40px;
     -webkit-text-fill-color: var(--fg-1);  /* iOS ne peut pas écraser la couleur */
   }
   .hdr-search-kbd { display: none; }
 
-  /* ── Recherche mobile : plein écran quand l'input est actif ── */
-  /* :has() est supporté sur iOS 16+, Chrome Android 105+         */
-  .hdr:has(.hdr-search:focus) {
-    /* Le header devient une barre de recherche pure */
-  }
-  .hdr:has(.hdr-search:focus) .hdr-brand  { display: none; }
-  .hdr:has(.hdr-search:focus) .hdr-right  { display: none; }
-  .hdr:has(.hdr-search:focus) .hdr-search-wrap {
-    max-width: none;
-    flex: 1;
-  }
-
   /* Masquer items non essentiels de la barre droite */
   .lang-toggle { display: none; }
+  /* Les filtres s'ouvrent depuis la carte, par un bouton libellé : garder
+     ici une seconde icône, muette et de 32 px, brouillait l'accès. */
+  .hdr-btn-filtres { display: none; }
 
   /* View switch : icônes seulement */
   .view-switch-btn { padding: 5px 8px; }
   .view-switch-btn .vsw-label { display: none; }
 
-  /* Stats strip : scroll horizontal silencieux */
+  /* ── Bandeau : une ligne qui tient, au lieu de six qui débordent ── */
   .stats-strip {
-    overflow-x: auto; overflow-y: hidden;
-    flex-wrap: nowrap; padding: 0 12px;
-    height: 38px;
+    height: 34px;
+    padding: 0 12px;
+    overflow: hidden;          /* plus de défilement masqué */
   }
-  .stats-strip::-webkit-scrollbar { display: none; }
-  .stat-item { padding: 0 12px; white-space: nowrap; flex-shrink: 0; }
-  .stat-item:first-child { padding-left: 0; }
-  .stat-meta { display: none; }
+  /* Les colonnes du grand écran cèdent la place à la ligne compacte. */
+  .stat-item, .stat-meta { display: none; }
+
+  .stats-mobile {
+    display: flex; align-items: center; gap: 10px;
+    width: 100%;
+    font-family: var(--font-body); font-size: 12px;
+    color: rgba(255,255,255,0.55);
+  }
+  /* La zone peut porter un nom long (« Nyong - Et - Mfoumou ») : elle prend
+     la place disponible et se tronque, les compteurs restant prioritaires. */
+  .stats-mobile-zone {
+    flex: 1 1 auto; min-width: 0;
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    color: #fff; font-weight: 600;
+  }
+  .stats-mobile-nb { flex: none; font-family: var(--font-mono); color: #fff; font-size: 12px; }
+  .stats-mobile-total { color: rgba(255,255,255,0.35); margin-left: 2px; }
+  .stats-mobile-puces { flex: none; display: flex; align-items: center; gap: 8px; }
+  /* Pastille colorée + nombre : le statut se lit d'un coup d'œil sans
+     dépenser la largeur qu'exigeraient les libellés « Conformes », etc. */
+  .stats-mobile-puces .sp {
+    font-family: var(--font-mono); font-size: 11px; font-weight: 600;
+    display: inline-flex; align-items: center; gap: 4px;
+  }
+  .stats-mobile-puces .sp::before {
+    content: ''; width: 7px; height: 7px; border-radius: 50%; display: inline-block;
+  }
+  .sp-ok     { color: var(--rgnc-foret-300); }
+  .sp-warn   { color: var(--rgnc-warning); }
+  .sp-danger { color: #E88; }
+  .sp-ok::before     { background: var(--rgnc-foret-300); }
+  .sp-warn::before   { background: var(--rgnc-warning); }
+  .sp-danger::before { background: #E88; }
 
   /* ── Layout principal ── */
   .main { flex-direction: column; }
@@ -1100,11 +1158,94 @@ tr:hover .admin-col-sticky-right {
     margin: 8px auto 0;
   }
 
-  /* ── Map toolbar : réduire ── */
-  .map-toolbar { top: 12px; right: 12px; }
-  .map-zoom { bottom: 74px; right: 12px; }
+  /* ── Contrôles de carte : tout descendre dans la zone du pouce ──
+   *
+   * En haut à droite, la barre d'outils était le coin le plus difficile à
+   * atteindre d'une seule main — celle du géomètre tient un carnet ou une
+   * canne. Elle devient une rangée horizontale en bas, et le zoom se place
+   * juste au-dessus.
+   *
+   * `env(safe-area-inset-bottom)` tient compte de la barre de geste des
+   * téléphones sans bouton d'accueil, qui recouvrirait sinon la rangée. */
+  .map-toolbar {
+    top: auto;
+    bottom: calc(12px + env(safe-area-inset-bottom));
+    left: 12px;
+    right: 12px;
+    flex-direction: row;
+    align-items: center;
+    gap: 4px;
+    /* Si l'écran est trop étroit pour tous les outils, on fait défiler la
+       rangée plutôt que de la laisser déborder ou compresser les cibles. */
+    overflow-x: auto;
+    scrollbar-width: none;
+    justify-content: flex-start;
+  }
+  .map-toolbar::-webkit-scrollbar { display: none; }
+  .map-tool-btn { flex: none; }
+  .map-tool-pan { display: none; }
+  /* Séparateurs supprimés : ils structuraient une colonne, ils encombrent
+     une rangée — et chaque pixel compte ici. */
+  .map-tool-sep { display: none; }
+
+  /* Ordre par fréquence d'usage sur le terrain. À 44 px la cible tactile,
+     la rangée peut dépasser la largeur d'un écran de 360 px : elle défile
+     alors, et c'est l'outil de mesure — le moins sollicité dehors — qui
+     sort du cadre, jamais les filtres ni la position. */
+  .map-tool-filtres       { order: 1; }
+  .map-tool-gps           { order: 2; }
+  .map-tool-cadrer        { order: 3; }
+  .map-tool-couches-wrap  { order: 4; flex: none; }
+  .map-tool-mesure        { order: 5; }
+
+  /* Bouton Filtres : le seul à porter un libellé, parce qu'il ouvre un
+     panneau entier et non un simple mode de la carte. */
+  .map-tool-filtres {
+    width: auto;
+    padding: 0 12px;
+    gap: 6px;
+    background: var(--brand);
+    color: #fff;
+    font-family: var(--font-body);
+    font-size: 13px;
+    font-weight: 600;
+  }
+  .map-tool-filtres { display: flex; }
+  .map-tool-filtres:hover { background: var(--rgnc-foret-600); color: #fff; }
+  .map-tool-libelle { display: inline; }
+
+  /* Le sélecteur de fond s'ouvrait vers la droite depuis le haut de l'écran.
+     La barre étant maintenant en bas, il doit s'ouvrir vers le haut, sans
+     quoi il sortirait sous le bord inférieur. */
+  .basemap-picker {
+    right: auto; left: 0;
+    top: auto; bottom: 100%;
+    margin-bottom: 6px;
+  }
+  .map-tool-pastille {
+    min-width: 18px; height: 18px;
+    padding: 0 5px;
+    border-radius: 9px;
+    background: var(--accent);
+    color: #fff;
+    font-size: 11px; font-weight: 700; line-height: 18px;
+    text-align: center;
+  }
+
+  /* Zoom : au-dessus de la rangée d'outils, contre le bord droit. */
+  .map-zoom {
+    right: 12px;
+    bottom: calc(74px + env(safe-area-inset-bottom));
+  }
+
   .coord-tracker { display: none; }
-  .scalebar { bottom: 12px; font-size: 10px; padding: 4px 10px; }
+  /* Échelle remontée : la rangée d'outils occupe désormais le bas. */
+  .scalebar {
+    bottom: calc(74px + env(safe-area-inset-bottom));
+    left: 12px;
+    transform: none;
+    font-size: 10px; padding: 4px 10px;
+  }
   .map-legend { display: none; } /* Trop petit sur mobile */
 
   /* ── List view ── */
