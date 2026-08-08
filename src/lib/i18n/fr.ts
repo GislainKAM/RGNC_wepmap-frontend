@@ -57,7 +57,6 @@ const fr = {
   'map.statut.selection': 'Sélectionné',
   'map.legende.gps':      'Localisation GPS',
   'map.cadrer_zone':      "Cadrer sur la zone d'intérêt",
-  'map.filtres':          "Filtres",
   'stats.zone_courante':  "Zone",
 
   // ── Filtres ──────────────────────────────────────────────────────

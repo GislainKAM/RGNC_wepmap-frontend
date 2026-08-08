@@ -124,7 +124,8 @@ export default function MapPage() {
             selectedId={selectedId}
             onPickPoint={handlePickPoint}
             zone={zone ?? null}
-            onOuvrirFiltres={() => setFiltersCollapsed(false)}
+            onBasculerFiltres={() => setFiltersCollapsed((c) => !c)}
+            filtresOuverts={!filtersCollapsed}
             nbFiltresActifs={nbFiltresActifs}
           />
         ) : (

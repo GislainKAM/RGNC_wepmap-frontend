@@ -16,8 +16,10 @@ interface MapCanvasProps {
   onPickPoint: (id: number) => void
   /** Emprise à mettre en évidence ; le reste de la carte est assombri. */
   zone?:       ZoneInteret | null
-  /** Ouvre le panneau de filtres — utilisé par le bouton mobile de la carte. */
-  onOuvrirFiltres?: () => void
+  /** Ouvre ou referme le panneau de filtres — bouton mobile de la carte. */
+  onBasculerFiltres?: () => void
+  /** État du panneau : commande l'icône, qui doit annoncer le sens du geste. */
+  filtresOuverts?: boolean
   /** Nombre de critères actifs, affiché en pastille sur ce bouton. */
   nbFiltresActifs?: number
 }
@@ -262,7 +264,7 @@ function niceDistance(meters: number): string {
 
 export function MapCanvas({
   points, selectedId, onPickPoint, zone,
-  onOuvrirFiltres, nbFiltresActifs = 0,
+  onBasculerFiltres, filtresOuverts = false, nbFiltresActifs = 0,
 }: MapCanvasProps) {
   const { t } = useLanguage()
 
@@ -1073,38 +1075,44 @@ export function MapCanvas({
         </div>
       )}
 
-      {/* ── Barre d'outils ── */}
-      {/* Colonne en haut à droite sur grand écran ; rangée en bas, à portée
-          de pouce, sur mobile (voir .map-toolbar dans globals.css). */}
+      {/* ── Barre d'outils (colonne, haut-droite) ── */}
       <div className="map-toolbar">
 
         {/* Filtres — mobile seulement.
-            Sur grand écran le panneau est ouvert en permanence à gauche ;
-            sur mobile il est replié et son seul accès était une icône de
-            32 px noyée parmi quatre autres dans le header. D'où cette
-            entrée libellée, dans la zone du pouce, qui indique en outre
-            combien de critères sont actifs. */}
-        {onOuvrirFiltres && (
+            Sur grand écran le panneau reste déplié à gauche ; sur mobile il
+            est replié, et son seul accès était une icône muette de 32 px
+            noyée parmi quatre autres dans le header.
+
+            L'icône annonce le geste plutôt que la fonction : chevrons vers
+            la droite quand le panneau est fermé — il va sortir par la
+            gauche — et vers la gauche quand il est ouvert, pour le renvoyer
+            d'où il vient. Une icône d'entonnoir fixe dirait « filtres »
+            sans rien dire de ce que fait le clic. */}
+        {onBasculerFiltres && (
           <button
-            className="map-tool-btn map-tool-filtres"
-            onClick={onOuvrirFiltres}
+            className={`map-tool-btn map-tool-filtres${filtresOuverts ? ' ouvert' : ''}`}
+            onClick={onBasculerFiltres}
+            aria-expanded={filtresOuverts}
+            title={filtresOuverts ? t('header.filtres.hide') : t('header.filtres.show')}
             aria-label={
               nbFiltresActifs > 0
-                ? `${t('map.filtres')} — ${nbFiltresActifs}`
-                : t('map.filtres')
+                ? `${filtresOuverts ? t('header.filtres.hide') : t('header.filtres.show')} — ${nbFiltresActifs}`
+                : (filtresOuverts ? t('header.filtres.hide') : t('header.filtres.show'))
             }
           >
-            <Icon name="filter" size={16} />
-            <span className="map-tool-libelle">{t('map.filtres')}</span>
+            <Icon name={filtresOuverts ? 'panel-left-close' : 'panel-left-open'} size={17} />
             {nbFiltresActifs > 0 && (
               <span className="map-tool-pastille" aria-hidden="true">{nbFiltresActifs}</span>
             )}
           </button>
         )}
 
-        {/* Pan — masqué au doigt : sur un écran tactile, faire glisser
-            déplace toujours la carte. Ce bouton ne sert qu'à quitter l'outil
-            de mesure, ce que le bouton Mesure fait déjà en bascule. */}
+        {/* Détache les filtres — qui pilotent un panneau — des outils qui
+            agissent sur la carte. Masqué avec le bouton sur grand écran,
+            sans quoi la colonne s'ouvrirait sur un trait orphelin. */}
+        <div className="map-tool-sep map-tool-sep-filtres" />
+
+        {/* Pan */}
         <button
           className={`map-tool-btn map-tool-pan${activeTool === 'pan' ? ' active' : ''}`}
           title={t('map.outil.pan')}

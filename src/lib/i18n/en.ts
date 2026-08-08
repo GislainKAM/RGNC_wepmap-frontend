@@ -59,7 +59,6 @@ const en: Record<TranslationKey, string> = {
   'map.statut.selection': 'Selected',
   'map.legende.gps':      'GPS location',
   'map.cadrer_zone':      "Zoom to area of interest",
-  'map.filtres':          "Filters",
   'stats.zone_courante':  "Area",
 
   // ── Filtres ──────────────────────────────────────────────────────

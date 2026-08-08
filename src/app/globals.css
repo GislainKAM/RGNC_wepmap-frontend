@@ -476,8 +476,35 @@ body:has(.page-scrollable) { overflow: auto; }
 /* Le bouton Filtres de la carte n'existe que sur mobile : sur grand écran le
    panneau est déjà déplié en permanence sur la gauche, un second accès ne
    ferait que dupliquer une commande visible. */
-.map-tool-filtres { display: none; }
-.map-tool-libelle { display: none; }
+.map-tool-filtres { display: none; position: relative; }
+.map-tool-sep-filtres { display: none; }
+
+/* Il ouvre un panneau, là où ses voisins changent un mode de la carte :
+   le fond plein le distingue au premier regard. */
+.map-tool-filtres { background: var(--brand); color: #fff; }
+.map-tool-filtres:hover { background: var(--rgnc-foret-600); color: #fff; }
+/* Panneau ouvert : le bouton s'efface, l'action proposée n'étant plus
+   « ouvrir » mais « refermer ». */
+.map-tool-filtres.ouvert { background: var(--bg-sunken); color: var(--fg-1); }
+
+/* Nombre de critères actifs. En pastille sur le coin du bouton, faute de
+   place pour un libellé dans une colonne de 44 px : sans elle, rien
+   n'indiquerait qu'un filtre restreint l'affichage une fois le panneau
+   refermé, et une carte presque vide passerait pour un défaut de
+   chargement. */
+.map-tool-pastille {
+  position: absolute;
+  top: -4px; right: -4px;
+  min-width: 17px; height: 17px;
+  padding: 0 4px;
+  border-radius: 9px;
+  background: var(--accent);
+  border: 1.5px solid var(--bg-elevated);
+  color: #fff;
+  font-family: var(--font-body);
+  font-size: 10px; font-weight: 700; line-height: 14px;
+  text-align: center;
+}
 
 .map-zoom {
   position: absolute; bottom: 80px; right: 16px;
@@ -1158,90 +1185,29 @@ tr:hover .admin-col-sticky-right {
     margin: 8px auto 0;
   }
 
-  /* ── Contrôles de carte : tout descendre dans la zone du pouce ──
+  /* ── Contrôles de carte ──
    *
-   * En haut à droite, la barre d'outils était le coin le plus difficile à
-   * atteindre d'une seule main — celle du géomètre tient un carnet ou une
-   * canne. Elle devient une rangée horizontale en bas, et le zoom se place
-   * juste au-dessus.
+   * La barre reste une colonne en haut à droite, identique au grand écran :
+   * une seule disposition à apprendre, quel que soit le support.
    *
-   * `env(safe-area-inset-bottom)` tient compte de la barre de geste des
-   * téléphones sans bouton d'accueil, qui recouvrirait sinon la rangée. */
-  .map-toolbar {
-    top: auto;
-    bottom: calc(12px + env(safe-area-inset-bottom));
-    left: 12px;
-    right: 12px;
-    flex-direction: row;
-    align-items: center;
-    gap: 4px;
-    /* Si l'écran est trop étroit pour tous les outils, on fait défiler la
-       rangée plutôt que de la laisser déborder ou compresser les cibles. */
-    overflow-x: auto;
-    scrollbar-width: none;
-    justify-content: flex-start;
-  }
-  .map-toolbar::-webkit-scrollbar { display: none; }
-  .map-tool-btn { flex: none; }
-  .map-tool-pan { display: none; }
-  /* Séparateurs supprimés : ils structuraient une colonne, ils encombrent
-     une rangée — et chaque pixel compte ici. */
-  .map-tool-sep { display: none; }
-
-  /* Ordre par fréquence d'usage sur le terrain. À 44 px la cible tactile,
-     la rangée peut dépasser la largeur d'un écran de 360 px : elle défile
-     alors, et c'est l'outil de mesure — le moins sollicité dehors — qui
-     sort du cadre, jamais les filtres ni la position. */
-  .map-tool-filtres       { order: 1; }
-  .map-tool-gps           { order: 2; }
-  .map-tool-cadrer        { order: 3; }
-  .map-tool-couches-wrap  { order: 4; flex: none; }
-  .map-tool-mesure        { order: 5; }
-
-  /* Bouton Filtres : le seul à porter un libellé, parce qu'il ouvre un
-     panneau entier et non un simple mode de la carte. */
-  .map-tool-filtres {
-    width: auto;
-    padding: 0 12px;
-    gap: 6px;
-    background: var(--brand);
-    color: #fff;
-    font-family: var(--font-body);
-    font-size: 13px;
-    font-weight: 600;
-  }
+   * Le bouton Filtres la coiffe. C'est le seul accès au panneau sur mobile,
+   * l'icône du header y étant masquée pour ne pas dédoubler la commande. */
+  .map-toolbar { top: 12px; right: 12px; }
   .map-tool-filtres { display: flex; }
-  .map-tool-filtres:hover { background: var(--rgnc-foret-600); color: #fff; }
-  .map-tool-libelle { display: inline; }
+  .map-tool-sep-filtres { display: block; }
 
-  /* Le sélecteur de fond s'ouvrait vers la droite depuis le haut de l'écran.
-     La barre étant maintenant en bas, il doit s'ouvrir vers le haut, sans
-     quoi il sortirait sous le bord inférieur. */
-  .basemap-picker {
-    right: auto; left: 0;
-    top: auto; bottom: 100%;
-    margin-bottom: 6px;
-  }
-  .map-tool-pastille {
-    min-width: 18px; height: 18px;
-    padding: 0 5px;
-    border-radius: 9px;
-    background: var(--accent);
-    color: #fff;
-    font-size: 11px; font-weight: 700; line-height: 18px;
-    text-align: center;
-  }
-
-  /* Zoom : au-dessus de la rangée d'outils, contre le bord droit. */
+  /* Zoom : ramené dans le coin, à portée de pouce, au lieu de flotter à
+     mi-hauteur. `env(safe-area-inset-bottom)` écarte la barre de geste des
+     téléphones sans bouton d'accueil, qui recouvrait les commandes. */
   .map-zoom {
     right: 12px;
-    bottom: calc(74px + env(safe-area-inset-bottom));
+    bottom: calc(16px + env(safe-area-inset-bottom));
   }
 
   .coord-tracker { display: none; }
-  /* Échelle remontée : la rangée d'outils occupe désormais le bas. */
+  /* Échelle à gauche : centrée, elle passait sous le bloc de zoom. */
   .scalebar {
-    bottom: calc(74px + env(safe-area-inset-bottom));
+    bottom: calc(16px + env(safe-area-inset-bottom));
     left: 12px;
     transform: none;
     font-size: 10px; padding: 4px 10px;
