@@ -133,6 +133,8 @@ export default function MapPage() {
             points={geojson?.features ?? []}
             onPickPoint={handlePickPoint}
             isLoading={pointsLoading}
+            onBasculerFiltres={() => setFiltersCollapsed((c) => !c)}
+            nbFiltresActifs={nbFiltresActifs}
           />
         )}
 
