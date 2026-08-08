@@ -163,19 +163,19 @@ export function PointList({ points, onPickPoint, isLoading }: PointListProps) {
             size="sm"
             onClick={localiser}
             disabled={geoEtat === 'attente'}
-            title={maPosition ? 'Trier par distance depuis ma position' : 'Utiliser ma position'}
+            title={maPosition ? t('list.geo.trier') : t('list.geo.utiliser')}
           >
             <Icon name="map-pin" size={13} />
-            {geoEtat === 'attente' ? 'Localisation…' : 'Près de moi'}
+            {geoEtat === 'attente' ? t('list.geo.attente') : t('list.geo.pres')}
           </Button>
           {geoEtat === 'refuse' && (
             <span style={{ fontSize: 11, color: 'var(--rgnc-danger)' }} role="status">
-              Accès à la position refusé — à réautoriser dans le navigateur
+              {t('list.geo.refuse')}
             </span>
           )}
           {geoEtat === 'indisponible' && (
             <span style={{ fontSize: 11, color: 'var(--fg-3)' }} role="status">
-              Position indisponible (signal GPS faible ?)
+              {t('list.geo.indispo')}
             </span>
           )}
           <Button variant="ghost" size="sm">
@@ -205,7 +205,7 @@ export function PointList({ points, onPickPoint, isLoading }: PointListProps) {
                   { key: 'ordre',        label: t('list.col.ordre')   },
                   { key: 'reseau',       label: t('list.col.materiau')},
                   { key: 'statut',       label: t('list.col.statut')  },
-                  ...(maPosition ? [{ key: 'distance' as SortKey, label: 'Distance' }] : []),
+                  ...(maPosition ? [{ key: 'distance' as SortKey, label: t('list.col.distance') }] : []),
                   { key: 'latitude_dd',  label: t('list.col.lat')     },
                   { key: 'longitude_dd', label: t('list.col.lon')     },
                   { key: 'altitude_ngac',label: t('list.col.alt')     },
