@@ -257,7 +257,7 @@ function niceDistance(meters: number): string {
 // ── Composant ────────────────────────────────────────────────────
 
 export function MapCanvas({ points, selectedId, onPickPoint, zone }: MapCanvasProps) {
-  const { lang } = useLanguage()
+  const { t } = useLanguage()
 
   // Map refs
   const mapRef             = useRef<HTMLDivElement>(null)
@@ -1006,18 +1006,14 @@ export function MapCanvas({ points, selectedId, onPickPoint, zone }: MapCanvasPr
           <Icon name="triangle-alert" size={14} />
           <span>
             {geoErreur === 'refuse'
-              ? (lang === 'fr'
-                  ? 'Localisation refusée — autorisez l’accès à la position dans les réglages du navigateur.'
-                  : 'Location denied — allow position access in your browser settings.')
-              : (lang === 'fr'
-                  ? 'Position introuvable — placez-vous à découvert et réessayez.'
-                  : 'Position unavailable — move to an open area and try again.')}
+              ? t('map.geo.refuse')
+              : t('map.geo.introuvable')}
           </span>
           <button
             type="button"
             onClick={() => setGeoErreur(null)}
             className="geo-error-close"
-            aria-label={lang === 'fr' ? 'Fermer' : 'Dismiss'}
+            aria-label={t('map.geo.fermer')}
           >
             <Icon name="x" size={13} />
           </button>
@@ -1043,7 +1039,7 @@ export function MapCanvas({ points, selectedId, onPickPoint, zone }: MapCanvasPr
         {/* Pan */}
         <button
           className={`map-tool-btn${activeTool === 'pan' ? ' active' : ''}`}
-          title={lang === 'fr' ? 'Déplacer' : 'Pan'}
+          title={t('map.outil.pan')}
           onClick={() => setActiveTool('pan')}
         >
           <Icon name="navigate" size={17} />
@@ -1052,7 +1048,7 @@ export function MapCanvas({ points, selectedId, onPickPoint, zone }: MapCanvasPr
         {/* Mesure */}
         <button
           className={`map-tool-btn${activeTool === 'measure' ? ' active' : ''}`}
-          title={lang === 'fr' ? 'Mesurer une distance' : 'Measure distance'}
+          title={t('map.outil.mesurer')}
           onClick={() => setActiveTool((t) => t === 'measure' ? 'pan' : 'measure')}
         >
           <Icon name="ruler" size={17} />
@@ -1064,7 +1060,7 @@ export function MapCanvas({ points, selectedId, onPickPoint, zone }: MapCanvasPr
         <div style={{ position: 'relative' }}>
           <button
             className={`map-tool-btn${showBasemapPicker ? ' active' : ''}`}
-            title={lang === 'fr' ? 'Fond de carte' : 'Basemap'}
+            title={t('map.fond')}
             onClick={() => setShowBasemapPicker((v) => !v)}
           >
             <Icon name="layers" size={17} />
@@ -1073,7 +1069,7 @@ export function MapCanvas({ points, selectedId, onPickPoint, zone }: MapCanvasPr
           {showBasemapPicker && (
             <div className="basemap-picker">
               <div className="basemap-picker-title">
-                {lang === 'fr' ? 'Fond de carte' : 'Basemap'}
+                {t('map.fond')}
               </div>
               {BASEMAPS.map((b) => (
                 <button
@@ -1102,8 +1098,8 @@ export function MapCanvas({ points, selectedId, onPickPoint, zone }: MapCanvasPr
         {/* Géolocalisation */}
         <button
           className={`map-tool-btn${locating ? ' active' : ''}`}
-          title={lang === 'fr' ? 'Ma position' : 'My location'}
-          aria-label={lang === 'fr' ? 'Afficher ma position' : 'Show my location'}
+          title={t('map.geo.ma_position')}
+          aria-label={t('map.geo.afficher')}
           onClick={handleLocate}
         >
           <Icon name={locating ? 'loader' : 'crosshair'} size={17}
@@ -1113,7 +1109,7 @@ export function MapCanvas({ points, selectedId, onPickPoint, zone }: MapCanvasPr
         {/* Centrer Cameroun */}
         <button
           className="map-tool-btn"
-          title={lang === 'fr' ? 'Centrer sur le Cameroun' : 'Center on Cameroon'}
+          title={t('map.centrer_pays')}
           onClick={centerOnCameroon}
         >
           <Icon name="map-pin" size={17} />
@@ -1161,7 +1157,7 @@ export function MapCanvas({ points, selectedId, onPickPoint, zone }: MapCanvasPr
           <Icon name="ruler" size={14} />
           {measureText}
           <span style={{ fontSize: 10, opacity: 0.6, fontWeight: 400 }}>
-            — {lang === 'fr' ? 'double-clic pour terminer' : 'double-click to finish'}
+            — {t('map.mesure.fin')}
           </span>
         </div>
       )}
@@ -1177,26 +1173,24 @@ export function MapCanvas({ points, selectedId, onPickPoint, zone }: MapCanvasPr
           pointerEvents: 'none',
         }}>
           <Icon name="ruler" size={13} />
-          {lang === 'fr'
-            ? 'Cliquez pour mesurer · double-clic pour terminer'
-            : 'Click to measure · double-click to finish'}
+          {t('map.mesure.aide')}
         </div>
       )}
 
       {/* ── Légende (bas-gauche) ── */}
       <div className="map-legend">
         <div className="legend-title">
-          {lang === 'fr' ? 'Légende' : 'Legend'}
+          {t('map.legende')}
         </div>
 
         {/* ─ Ordre réseau — forme = ordre, couleur = statut ─ */}
         <div className="legend-section-label">
-          {lang === 'fr' ? 'Ordre réseau' : 'Network order'}
+          {t('map.legende.ordre')}
         </div>
         {([
-          { o: 1, label: lang === 'fr' ? '1er ordre'   : '1st order',   sub: lang === 'fr' ? 'Canevas fondamental'  : 'Fundamental framework' },
-          { o: 2, label: lang === 'fr' ? '2ème ordre'  : '2nd order',   sub: lang === 'fr' ? "Réseau d'appui"       : 'Support network'        },
-          { o: 3, label: lang === 'fr' ? '3ème ordre'  : '3rd order',   sub: lang === 'fr' ? 'Densification locale' : 'Local densification'    },
+          { o: 1, label: t('map.ordre.1'),   sub: t('map.ordre.1.sub') },
+          { o: 2, label: t('map.ordre.2'),   sub: t('map.ordre.2.sub')        },
+          { o: 3, label: t('map.ordre.3'),   sub: t('map.ordre.3.sub')    },
         ] as const).map(({ o, label, sub }) => (
           <div key={o} className="legend-item" style={{ alignItems: 'flex-start', gap: 9 }}>
             <OrdreIcon ordre={o} size={14} color="var(--fg-2)" style={{ marginTop: 2, flexShrink: 0 }} />
@@ -1209,14 +1203,14 @@ export function MapCanvas({ points, selectedId, onPickPoint, zone }: MapCanvasPr
 
         {/* ─ Statut — couleur du marqueur ─ */}
         <div className="legend-section-label" style={{ marginTop: 8 }}>
-          {lang === 'fr' ? 'Couleur = statut' : 'Color = status'}
+          {t('map.legende.couleur')}
         </div>
         {[
-          { color: '#1F5D3A', label: lang === 'fr' ? 'Conforme (actif)'   : 'Compliant (active)'  },
-          { color: '#D4A017', label: lang === 'fr' ? 'Dégradé (à vérifier)': 'Degraded (to verify)'},
-          { color: '#B83434', label: lang === 'fr' ? 'Détruit'             : 'Destroyed'           },
-          { color: '#9BA5AC', label: lang === 'fr' ? 'Inconnu'             : 'Unknown'             },
-          { color: '#B85729', label: lang === 'fr' ? 'Sélectionné'         : 'Selected'            },
+          { color: '#1F5D3A', label: t('map.statut.actif')  },
+          { color: '#D4A017', label: t('map.statut.degrade')},
+          { color: '#B83434', label: t('map.statut.detruit')           },
+          { color: '#9BA5AC', label: t('map.statut.inconnu')             },
+          { color: '#B85729', label: t('map.statut.selection')            },
         ].map(({ color, label }) => (
           <div key={color} className="legend-item">
             <span className="legend-dot" style={{ background: color }} />
@@ -1226,7 +1220,7 @@ export function MapCanvas({ points, selectedId, onPickPoint, zone }: MapCanvasPr
 
         {/* ─ Position utilisateur ─ */}
         <div className="legend-section-label" style={{ marginTop: 8 }}>
-          {lang === 'fr' ? 'Ma position' : 'My location'}
+          {t('map.geo.ma_position')}
         </div>
         <div className="legend-item">
           <span style={{
@@ -1234,7 +1228,7 @@ export function MapCanvas({ points, selectedId, onPickPoint, zone }: MapCanvasPr
             background: 'rgba(66,133,244,0.25)', border: '2px solid #4285F4',
             display: 'inline-block',
           }} />
-          <span style={{ fontSize: 11 }}>{lang === 'fr' ? 'Localisation GPS' : 'GPS location'}</span>
+          <span style={{ fontSize: 11 }}>{t('map.legende.gps')}</span>
         </div>
       </div>
     </div>
