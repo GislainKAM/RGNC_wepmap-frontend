@@ -37,12 +37,47 @@ const jetbrainsMono = JetBrains_Mono({
   display:  'swap',
 })
 
+const TITRE = 'RGNC WebMap'
+const DESCRIPTION =
+  "Interface WebSIG pour la consultation et la gestion du Réseau Géodésique National du Cameroun (RGNC). Visualisez les bornes géodésiques, leurs coordonnées et fiches signalétiques."
+
+// Open Graph : sans ces balises, un lien partagé sur WhatsApp ou LinkedIn
+// n'affiche que le titre et la description, sans image. `metadataBase` est
+// indispensable — og:image doit être une URL absolue, ces plateformes ne
+// résolvent pas les chemins relatifs.
+//
+// L'image est une capture de /map plutôt que de l'accueil : c'est la carte
+// qui montre ce que fait l'application. Format 1200x630 (ratio 1.91:1
+// attendu, sinon recadrage) et 111 Ko — au-delà d'environ 300 Ko, WhatsApp
+// ignore l'image sans rien signaler.
 export const metadata: Metadata = {
-  title: 'RGNC WebMap',
-  description:
-    "Interface WebSIG pour la consultation et la gestion du Réseau Géodésique National du Cameroun (RGNC). Visualisez les bornes géodésiques, leurs coordonnées et fiches signalétiques.",
+  metadataBase: new URL('https://rgnc.websig.app'),
+  title: TITRE,
+  description: DESCRIPTION,
   keywords: ['géodésie', 'Cameroun', 'RGNC', 'WebGIS', 'bornes géodésiques'],
   authors: [{ name: 'RGNC — Réseau Géodésique National du Cameroun' }],
+  openGraph: {
+    type: 'website',
+    siteName: 'RGNC WebMap',
+    locale: 'fr_FR',
+    url: '/',
+    title: TITRE,
+    description: DESCRIPTION,
+    images: [
+      {
+        url: '/og/apercu.jpg',
+        width: 1200,
+        height: 630,
+        alt: 'Carte des bornes géodésiques du Réseau Géodésique National du Cameroun',
+      },
+    ],
+  },
+  twitter: {
+    card: 'summary_large_image',
+    title: TITRE,
+    description: DESCRIPTION,
+    images: ['/og/apercu.jpg'],
+  },
 }
 
 export default function RootLayout({
