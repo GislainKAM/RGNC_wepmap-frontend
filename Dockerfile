@@ -7,7 +7,15 @@
 FROM node:20-alpine AS deps
 RUN apk add --no-cache libc6-compat
 WORKDIR /app
-COPY package.json package-lock.json* ./
+
+# Jeton de lecture de GitHub Packages, où est publié @websig-app/geo-core :
+# GitHub y exige une authentification même pour un paquet public. Passé en
+# build-arg, il ne vit que dans cet étage — le mode standalone ne copie que le
+# serveur autonome dans l'image finale, jamais ce contexte.
+ARG NODE_AUTH_TOKEN
+ENV NODE_AUTH_TOKEN=$NODE_AUTH_TOKEN
+
+COPY package.json package-lock.json* .npmrc ./
 # Installation COMPLÈTE, devDependencies incluses : l'étape "builder"
 # réutilise ce node_modules pour lancer `next build`, qui a besoin de
 # typescript, tailwindcss, postcss et autoprefixer — tous en
