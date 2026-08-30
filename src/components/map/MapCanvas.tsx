@@ -4,9 +4,9 @@ import React, { useRef, useEffect, useCallback, useState } from 'react'
 import { Icon } from '@/components/ui/Icon'
 import { OrdreIcon } from '@/components/ui/OrdreIcon'
 import { useLanguage } from '@/hooks/useLanguage'
+import { useAuth } from '@/hooks/useAuth'
 import type { GeoJSONFeatureCollection, ZoneInteret } from '@/lib/types'
 import { CAMEROON_CENTER, DEFAULT_ZOOM, MIN_ZOOM, MAX_ZOOM } from '@/lib/constants'
-import { decouperMasque } from '@/lib/masqueZone'
 
 // ── Types ────────────────────────────────────────────────────────
 
@@ -40,74 +40,31 @@ const STATUT_COLORS: Record<string, string> = {
 // La fonction style OL est rappelée à CHAQUE frame pour CHAQUE feature.
 // Sans cache, on génère + encode un nouveau SVG 50-100× par frame sur mobile
 // → le thread JS est bloqué → les tuiles restent grises en attendant.
-// Avec cache : ~24 entrées marker + ~N entrées cluster → quasiment 0 coût.
+// Avec cache : ~24 entrées → quasiment 0 coût. Les clusters réutilisent ces
+// mêmes entrées, leur symbole étant celui d'une entité isolée.
 const _svgMarkerCache    = new Map<string, string>()
-const _svgClusterCache   = new Map<string, string>()
-// ── Moteur de clustering par groupe (ordre + statut) ─────────────
-//
-// `ol/source/Cluster` ne filtre pas par attribut — on l'implémente manuellement.
-// Algorithme : greedy centroïde glissant, O(N × K) par groupe.
-//
-// rawFeatures   : features OL brutes (EPSG:3857)
-// resolution    : mètres / pixel à l'échelle actuelle  (view.getResolution())
-// pixelDistance : seuil de regroupement en pixels (ex : 40)
-// OlFeature / OlPoint : classes OL passées en paramètre
 
-function buildDisplayFeatures(
-  rawFeatures: any[],
-  resolution: number,
-  pixelDistance: number,
-  OlFeature: any,
-  OlPoint: any,
-): any[] {
-  // 1. Regrouper par (ordre, statut) — on ne cluster que les « mêmes » points
-  const groups = new Map<string, any[]>()
-  for (const f of rawFeatures) {
-    const p   = f.getProperties()
-    const key = `${p.ordre ?? 3}__${p.statut ?? 'inconnu'}`
-    if (!groups.has(key)) groups.set(key, [])
-    groups.get(key)!.push(f)
-  }
+// Réglages de chargement des tuiles, communs à tous les fonds de carte.
+// preload → pré-charge les niveaux de zoom adjacents (moins de blanc au zoom) ;
+// useInterimTilesOnError → garde les vieilles tuiles pendant un rechargement,
+// au lieu de laisser un trou gris. Les deux comptent surtout sur mobile.
+const TUILES_CHARGEMENT = { preload: 4, useInterimTilesOnError: true }
 
-  const meterDist = pixelDistance * resolution   // distance de clustering en mètres
-  const result: any[] = []
+// Style du tracé de mesure, passé au MeasureTool du SDK.
+const MESURE_COULEUR = '#B85729'
 
-  for (const features of groups.values()) {
-    // 2. Clustering spatial greedy à l'intérieur du groupe
-    const clusters: { cx: number; cy: number; members: any[] }[] = []
+// Anneau d'amas : le marqueur non sélectionné fait 20 px centré sur son ancre
+// (10 px de rayon). 13 px place l'anneau juste au-delà, assez près pour se
+// lire comme un attribut du symbole plutôt que comme un objet distinct.
+const CLUSTER_RING_RADIUS = 13
 
-    for (const f of features) {
-      const [fx, fy] = f.getGeometry().getCoordinates()
-      let merged = false
-      for (const cl of clusters) {
-        const dx = fx - cl.cx, dy = fy - cl.cy
-        if (Math.sqrt(dx * dx + dy * dy) <= meterDist) {
-          cl.members.push(f)
-          // Recalculer le centroïde (moyenne glissante)
-          const n = cl.members.length
-          cl.cx += (fx - cl.cx) / n
-          cl.cy += (fy - cl.cy) / n
-          merged = true
-          break
-        }
-      }
-      if (!merged) clusters.push({ cx: fx, cy: fy, members: [f] })
-    }
-
-    // 3. Créer une feature d'affichage par cluster
-    for (const cl of clusters) {
-      const df = new OlFeature(new OlPoint([cl.cx, cl.cy]))
-      df.set('_members', cl.members)
-      df.set('_size',    cl.members.length)
-      const mp = cl.members[0].getProperties()
-      df.set('ordre',  mp.ordre  ?? 3)
-      df.set('statut', mp.statut ?? 'inconnu')
-      if (cl.members.length === 1) df.setId(cl.members[0].getId())
-      result.push(df)
-    }
-  }
-
-  return result
+// ── Clé de regroupement pour clusterByGroup (@websig-app/geo-core) ──
+// Deux features ne fusionnent jamais si elles n'ont pas le même (ordre,
+// statut) — voir docs/architecture.md de geosig-sdk, "Clustering qui ne
+// mélange jamais deux catégories".
+function clusterGroupKey(feature: any): string {
+  const p = feature.getProperties()
+  return `${p.ordre ?? 3}__${p.statut ?? 'inconnu'}`
 }
 
 const BASEMAPS: { id: Basemap; label: string; color: string }[] = [
@@ -196,56 +153,6 @@ function makeSvgMarker(ordre: number, color: string, selected: boolean): string 
   return result
 }
 
-// ── Cluster helper ─────────────────────────────────────────────────
-// Même forme que le marqueur individuel (ordre → triangle/losange/cercle),
-// même couleur (statut), avec le nombre d'éléments agrégés inscrit à l'intérieur.
-function makeClusterMarkerSvg(ordre: number, color: string, count: number): string {
-  const cacheKey = `${ordre}|${color}|${count}`
-  if (_svgClusterCache.has(cacheKey)) return _svgClusterCache.get(cacheKey)!
-
-  // Taille plus grande que le marqueur simple pour absorber le texte
-  const S   = count < 10 ? 32 : count < 100 ? 38 : 44
-  const cx  = S / 2, cy = S / 2
-  const pad = 2.5
-  const r   = S / 2 - pad
-
-  const strokeW = 2.0
-  const stroke  = 'rgba(255,255,255,0.90)'
-  // Taille de police adaptée au nb de chiffres
-  const fs = count < 10 ? 12 : count < 100 ? 10 : 8
-
-  let shape: string
-  let textY = cy    // position verticale du texte (centroïde)
-
-  if (ordre === 1) {
-    // Triangle équilatéral de demi-base r → hauteur = r√3
-    const h    = r * Math.sqrt(3)
-    const base = r
-    const top  = cy - (h * 2) / 3
-    const bot  = cy + h / 3
-    textY = cy   // centroïde géométrique = cy (invariant avec la formule corrigée)
-    shape = `<polygon points="${cx},${top} ${cx + base},${bot} ${cx - base},${bot}"
-        fill="${color}" stroke="${stroke}" stroke-width="${strokeW}" stroke-linejoin="round"/>`
-  } else if (ordre === 2) {
-    // Losange — centroïde = centre géométrique
-    shape = `<polygon points="${cx},${pad} ${S - pad},${cy} ${cx},${S - pad} ${pad},${cy}"
-        fill="${color}" stroke="${stroke}" stroke-width="${strokeW}" stroke-linejoin="round"/>`
-  } else {
-    // Cercle
-    shape = `<circle cx="${cx}" cy="${cy}" r="${r}"
-        fill="${color}" stroke="${stroke}" stroke-width="${strokeW}"/>`
-  }
-
-  const text = `<text x="${cx}" y="${textY}" text-anchor="middle" dominant-baseline="central"
-      font-family="monospace" font-size="${fs}" font-weight="700" fill="white"
-      paint-order="stroke" stroke="rgba(0,0,0,0.25)" stroke-width="2">${count}</text>`
-
-  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${S}" height="${S}" viewBox="0 0 ${S} ${S}">${shape}${text}</svg>`
-  const result = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svg)
-  _svgClusterCache.set(cacheKey, result)
-  return result
-}
-
 // ── Rayon de l'anneau de sélection (en mètres, EPSG:3857) ────────
 // 45 m → ~36 px à zoom 17 (bâtiments visibles) — distingue le point de ses voisins
 const SELECTION_RING_RADIUS_M = 45
@@ -267,19 +174,38 @@ export function MapCanvas({
   onBasculerFiltres, filtresOuverts = false, nbFiltresActifs = 0,
 }: MapCanvasProps) {
   const { t } = useLanguage()
+  const role = useAuth((s) => s.user?.role)
+
+  // Capacités de carte du rôle courant, au sens RoleProvider du SDK.
+  //
+  // Le SDK interroge cette fonction avant d'activer un outil, y compris sur un
+  // appel direct à l'API — la restriction ne peut donc pas être contournée en
+  // masquant seulement le bouton (§5.3 du cahier des charges).
+  //
+  // La correspondance rôle → capacité ci-dessous reproduit le comportement
+  // actuel : la mesure reste ouverte à tous, y compris aux visiteurs non
+  // connectés. C'est une décision produit, à resserrer ici si le besoin
+  // apparaît, sans toucher au SDK.
+  const roleProviderRef = useRef<{ hasCapability: (c: string) => boolean }>({
+    hasCapability: () => true,
+  })
+  roleProviderRef.current = {
+    hasCapability: (capability: string) =>
+      capability === 'measure' ? true : role === 'geometre' || role === 'admin',
+  }
 
   // Map refs
   const mapRef             = useRef<HTMLDivElement>(null)
-  const mapInstanceRef     = useRef<any>(null)
+  const controllerRef      = useRef<any>(null)   // MapController (@websig-app/geo-core)
+  const mapInstanceRef     = useRef<any>(null)   // instance ol/Map brute — controllerRef.getMap()
   const vectorSourceRef    = useRef<any>(null)
   const vectorLayerRef     = useRef<any>(null)
   const tileLayerRef       = useRef<any>(null)
+  const measureToolRef     = useRef<any>(null)   // MeasureTool (@websig-app/geo-core)
+  const zoneLayerRef       = useRef<any>(null)   // couche masque, reconstruite par createMaskLayer
   const olRef              = useRef<any>(null)   // modules OL mis en cache après init
-  const measureSourceRef   = useRef<any>(null)
-  const drawInteractionRef = useRef<any>(null)
   const locMarkerSourceRef = useRef<any>(null)   // marqueur GPS utilisateur
   const selectionSourceRef = useRef<any>(null)   // anneau de sélection (cercle géographique)
-  const zoneSourceRef      = useRef<any>(null)   // masque + contour de la zone d'intérêt
   const zoneCadreeRef      = useRef<string | null>(null)  // dernière zone sur laquelle on a recadré
   const displaySourceRef   = useRef<any>(null)   // features d'affichage (clusters + points seuls)
   const selectedIdRef      = useRef<number | null>(null)   // id sélectionné (lu par le style OL)
@@ -304,6 +230,16 @@ export function MapCanvas({
   const [tilesLoading,      setTilesLoading]       = useState(false)
   const [mapPrete,          setMapPrete]           = useState(false)
 
+  // Indicateur « chargement de la carte » : à rebrancher sur chaque nouvelle
+  // couche de fond, les écouteurs étant portés par la source.
+  const brancherIndicateurTuiles = useCallback((couche: any) => {
+    const source = couche.getSource()
+    if (!source) return
+    source.on('tileloadstart', () => setTilesLoading(true))
+    source.on('tileloadend', () => setTilesLoading(false))
+    source.on('tileloaderror', () => setTilesLoading(false))
+  }, [])
+
   // ── 1. Initialisation de la carte ──────────────────────────────
 
   useEffect(() => {
@@ -312,73 +248,67 @@ export function MapCanvas({
 
     async function initMap() {
       const [
-        { default: OlMap    },
-        { default: View     },
-        { default: TileLayer },
-        { default: OSM      },
-        { default: XYZ      },
         { default: VectorLayer  },
         { default: VectorSource },
         { default: GeoJSON  },
         { Style, Icon: OlIcon, Stroke, Fill, Circle: CircleStyle, Text: OlText },
         { fromLonLat, toLonLat },
-        { default: Draw      },
         sphereModule,
         { default: OlFeature },
         { default: OlPoint   },
         { default: OlCircleGeom },
-        { default: OlPolygon },
+        geoCore,
       ] = await Promise.all([
-        import('ol/Map'),
-        import('ol/View'),
-        import('ol/layer/Tile'),
-        import('ol/source/OSM'),
-        import('ol/source/XYZ'),
         import('ol/layer/Vector'),
         import('ol/source/Vector'),
         import('ol/format/GeoJSON'),
         import('ol/style'),
         import('ol/proj'),
-        import('ol/interaction/Draw'),
         import('ol/sphere'),
         import('ol/Feature'),
         import('ol/geom/Point'),
         import('ol/geom/Circle'),  // anneau de sélection géographique
-        import('ol/geom/Polygon'), // masque de la zone d'intérêt
+        import('@websig-app/geo-core'),
       ])
+      const {
+        MapController,
+        createMaskLayer,
+        createOsmBaseLayer,
+        createXyzBaseLayer,
+        geoJsonToFeatures,
+        clusterByGroup,
+        createCountRingStyle,
+      } = geoCore
 
       if (!isMounted || !mapRef.current) return
 
       // Cache les modules pour utilisation ultérieure
       olRef.current = {
-        OlMap, View, TileLayer, OSM, XYZ,
         VectorLayer, VectorSource, GeoJSON,
         Style, OlIcon, Stroke, Fill, CircleStyle, OlText,
         fromLonLat, toLonLat,
-        Draw, OlFeature, OlPoint, OlCircleGeom, OlPolygon,
+        OlFeature, OlPoint, OlCircleGeom,
         getLength: sphereModule.getLength,
+        createMaskLayer, createOsmBaseLayer, createXyzBaseLayer,
+        geoJsonToFeatures, clusterByGroup,
       }
 
       // ── Source vecteur brute — points géodésiques ────────────────
       const vectorSource = new VectorSource({ format: new GeoJSON() })
       vectorSourceRef.current = vectorSource
 
-      // ── Source d'affichage — alimentée par buildDisplayFeatures ──
+      // ── Source d'affichage — alimentée par clusterByGroup ──
       // Contient clusters (N membres) + points seuls, regroupés par (ordre, statut)
       const displaySource = new VectorSource()
       displaySourceRef.current = displaySource
-
-      // Source vecteur — mesures
-      const measureSource = new VectorSource()
-      measureSourceRef.current = measureSource
 
       // ── Helper : reconstruit displaySource à partir de vectorSource ──
       const refreshClusters = () => {
         if (!vectorSourceRef.current || !displaySourceRef.current || !mapInstanceRef.current) return
         const resolution = mapInstanceRef.current.getView().getResolution() ?? 1
         const raw        = vectorSourceRef.current.getFeatures()
-        const { OlFeature: OlFeat, OlPoint: OlPt } = olRef.current
-        const display    = buildDisplayFeatures(raw, resolution, 40, OlFeat, OlPt)
+        const { clusterByGroup: cluster } = olRef.current
+        const display = cluster(raw, resolution, { getGroupKey: clusterGroupKey, pixelDistance: 40 })
         displaySourceRef.current.clear()
         displaySourceRef.current.addFeatures(display)
       }
@@ -399,13 +329,21 @@ export function MapCanvas({
           const color  = STATUT_COLORS[statut] ?? '#9BA5AC'
 
           if (size > 1) {
-            // ── Cluster : même forme + nb agrégés inscrit à l'intérieur ──────
-            return new Style({
-              image: new OlIcon({
-                src:    makeClusterMarkerSvg(ordre, color, size),
-                anchor: [0.5, 0.5],
+            // ── Amas : le symbole de l'entité, inchangé, cerclé d'un anneau ──
+            // dans sa propre couleur de statut, avec le compte en étiquette
+            // contre l'anneau.
+            //
+            // L'anneau signale l'agrégation sans qu'on ait à lire le chiffre,
+            // et n'ajoute aucune couleur au vocabulaire de la légende — une
+            // pastille rouge, elle, annonçait « détruit » sur un amas de
+            // bornes conformes. Le symbole garde forme (ordre) et couleur
+            // (statut) : un amas se lit comme ce qu'il agrège.
+            return [
+              new Style({
+                image: new OlIcon({ src: makeSvgMarker(ordre, color, false), anchor: [0.5, 0.5] }),
               }),
-            })
+              createCountRingStyle(size, { color, radius: CLUSTER_RING_RADIUS }),
+            ]
           }
 
           // ── Point unique ──────────────────────────────────────────────────
@@ -446,20 +384,6 @@ export function MapCanvas({
       })
       vectorLayerRef.current = vectorLayer
 
-      // Layer mesures
-      const measureLayer = new VectorLayer({
-        source: measureSource,
-        zIndex: 20,
-        style: new Style({
-          stroke: new Stroke({ color: '#B85729', width: 2, lineDash: [8, 4] }),
-          image: new CircleStyle({
-            radius: 5,
-            fill: new Fill({ color: '#B85729' }),
-            stroke: new Stroke({ color: '#fff', width: 2 }),
-          }),
-        }),
-      })
-
       // Layer marqueur position utilisateur (GPS)
       const locMarkerSource = new VectorSource()
       locMarkerSourceRef.current = locMarkerSource
@@ -474,23 +398,6 @@ export function MapCanvas({
         }),
       })
 
-      // ── Couche masque de la zone d'intérêt ───────────────────────
-      // zIndex 1 : au-dessus du fond de carte, sous tout le reste. Les
-      // bornes, les mesures et le marqueur GPS doivent rester à pleine
-      // luminosité même lorsqu'ils tombent hors de la zone — assombrir une
-      // borne la rendrait difficile à distinguer d'une borne détruite.
-      const zoneSource = new VectorSource()
-      zoneSourceRef.current = zoneSource
-      const zoneLayer = new VectorLayer({
-        source: zoneSource,
-        zIndex: 1,
-      })
-      // Le masque couvre toute la carte : il ne doit jamais intercepter un
-      // clic, sans quoi plus aucune borne ne serait sélectionnable. C'est le
-      // `layerFilter` du gestionnaire de clic, restreint à la couche des
-      // bornes, qui l'assure — le maintenir en cas d'ajout d'une couche.
-      zoneLayer.set('nom', 'masque-zone')
-
       // ── Couche anneau de sélection (cercle géographique à tirets) ────
       // zIndex 5 : sous les marqueurs pour ne pas masquer les voisins
       const selectionSource = new VectorSource()
@@ -500,16 +407,11 @@ export function MapCanvas({
         zIndex: 5,
       })
 
-      // Fond de carte OSM par défaut
-      // preload: 2       → pré-charge les tuiles des 2 niveaux de zoom adjacents (moins de blanc au zoom)
-      // transition: 0    → tuiles apparaissent immédiatement sans fondu (évite les bandes grises)
-      // useInterimTiles  → affiche les vieilles tuiles pendant le rechargement (navigation fluide)
-      const tileLayer = new TileLayer({
-        source: new OSM(),
-        zIndex: 0,
-        preload: 4,
-        useInterimTilesOnError: true,
-      })
+      // Fond de carte OSM par défaut, construit par le SDK.
+      // preload / useInterimTilesOnError limitent les zones blanches et les
+      // bandes grises pendant un zoom ou un réseau lent.
+      const tileLayer = createOsmBaseLayer(TUILES_CHARGEMENT)
+      tileLayer.setZIndex(0)
       tileLayerRef.current = tileLayer
 
       // Zoom initial : préférence utilisateur > constante par défaut
@@ -519,24 +421,56 @@ export function MapCanvas({
       // pixelRatio : limité à 2 max (évite un canvas 9× trop grand sur écrans 3× qui ralentit le rendu)
       const dpr = Math.min(window.devicePixelRatio || 1, 2)
 
-      const map = new OlMap({
+      // MapController pose le fond de carte + la vue ; la couche de masque est
+      // construite à la volée par createMaskLayer au changement de zone. Les
+      // couches restantes (sélection, marqueurs, GPS) n'ont pas d'équivalent
+      // LayerSource — ajoutées directement sur la carte brute.
+      //
+      // Le roleProvider est celui du SDK : les outils construits via
+      // controller.createMeasureTool() en héritent automatiquement, y compris
+      // par appel direct à l'API (§5.3 du cahier des charges).
+      const controller = new MapController({ roleProvider: roleProviderRef.current })
+      const map = controller.init({
         target: mapRef.current!,
-        layers: [tileLayer, zoneLayer, selectionLayer, measureLayer, vectorLayer, locMarkerLayer],
-        view: new View({
-          center: fromLonLat(CAMEROON_CENTER),
-          zoom: initZoom,
-          minZoom: MIN_ZOOM,
-          maxZoom: MAX_ZOOM,
-        }),
+        center: fromLonLat(CAMEROON_CENTER),
+        zoom: initZoom,
+        minZoom: MIN_ZOOM,
+        maxZoom: MAX_ZOOM,
+        baseLayer: tileLayer,
         controls: [],
         pixelRatio: dpr,
       })
+      map.addLayer(selectionLayer)
+      map.addLayer(vectorLayer)
+      map.addLayer(locMarkerLayer)
+      controllerRef.current = controller
       mapInstanceRef.current = map
 
+      // ── Outil de mesure du SDK ───────────────────────────────────
+      // Le SDK possède sa propre couche ; on lui donne seulement son zIndex
+      // (20 : au-dessus des bornes, sous le marqueur GPS) et son style.
+      const traceMesure = new Style({
+        stroke: new Stroke({ color: MESURE_COULEUR, width: 2, lineDash: [8, 4] }),
+        image: new CircleStyle({
+          radius: 5,
+          fill: new Fill({ color: MESURE_COULEUR }),
+          stroke: new Stroke({ color: '#fff', width: 2 }),
+        }),
+      })
+      const measureTool = controller.createMeasureTool({ style: traceMesure, drawStyle: traceMesure })
+      measureTool.layer.setZIndex(20)
+      measureToolRef.current = measureTool
+
+      // La longueur est reformatée ici plutôt que d'utiliser `value` du SDK :
+      // niceDistance arrondit plus court (« 1.2 km » contre « 1.23 km »), et
+      // c'est le format déjà affiché dans l'application.
+      measureTool.result$.subscribe(({ feature }: any) => {
+        const geom = feature.getGeometry()
+        if (geom) setMeasureText(niceDistance(sphereModule.getLength(geom)))
+      })
+
       // ── Indicateur de chargement des tuiles ──────────────────────
-      tileLayer.getSource()?.on('tileloadstart', () => setTilesLoading(true))
-      tileLayer.getSource()?.on('tileloadend',   () => setTilesLoading(false))
-      tileLayer.getSource()?.on('tileloaderror', () => setTilesLoading(false))
+      brancherIndicateurTuiles(tileLayer)
 
       // ── Race condition : si les données étaient déjà disponibles pendant l'init async ──
       // (TanStack Query retourne le cache instantanément au 2e passage sur la page,
@@ -550,7 +484,7 @@ export function MapCanvas({
         })
         vectorSource.addFeatures(features)
         const resolution = map.getView().getResolution() ?? 1
-        const display    = buildDisplayFeatures(features, resolution, 40, OlFeature, OlPoint)
+        const display = clusterByGroup(features, resolution, { getGroupKey: clusterGroupKey, pixelDistance: 40 })
         displaySource.addFeatures(display)
 
         // Pas de cadrage sur l'étendue des bornes ici : c'est la zone
@@ -576,7 +510,7 @@ export function MapCanvas({
           view.animate({ center, zoom: curZoom + 3, duration: 500 })
         } else {
           // Point unique → sélection
-          // L'id est copié sur la display feature dans buildDisplayFeatures
+          // L'id est copié sur la display feature par clusterByGroup (voir clusterGroupKey)
           const id = displayFeature.getId() as number ?? members?.[0]?.getId()
           if (id != null) onPickPoint(id)
         }
@@ -639,8 +573,14 @@ export function MapCanvas({
     initMap()
     return () => {
       isMounted = false
-      if (mapInstanceRef.current) {
-        mapInstanceRef.current.setTarget(undefined)
+      // L'outil de mesure possède sa propre couche et son abonnement : il se
+      // détruit avant la carte, sinon result$ resterait ouvert.
+      measureToolRef.current?.destroy()
+      measureToolRef.current = null
+      zoneLayerRef.current = null
+      if (controllerRef.current) {
+        controllerRef.current.destroy()
+        controllerRef.current = null
         mapInstanceRef.current = null
       }
     }
@@ -681,9 +621,9 @@ export function MapCanvas({
       // Reconstruire la source d'affichage (clusters + points seuls)
       if (displaySourceRef.current && mapInstanceRef.current) {
         const resolution = mapInstanceRef.current.getView().getResolution() ?? 1
-        const { OlFeature: OlFeat, OlPoint: OlPt } = olRef.current ?? {}
-        if (OlFeat && OlPt) {
-          const display = buildDisplayFeatures(features, resolution, 40, OlFeat, OlPt)
+        const cluster = olRef.current?.clusterByGroup
+        if (cluster) {
+          const display = cluster(features, resolution, { getGroupKey: clusterGroupKey, pixelDistance: 40 })
           displaySourceRef.current.clear()
           displaySourceRef.current.addFeatures(display)
         }
@@ -718,7 +658,7 @@ export function MapCanvas({
       vectorLayerRef.current?.changed()
       return
     }
-    if (!mapInstanceRef.current || !vectorSourceRef.current || !olRef.current) return
+    if (!mapInstanceRef.current || !controllerRef.current || !vectorSourceRef.current || !olRef.current) return
 
     const feature = vectorSourceRef.current.getFeatureById(selectedId)
     if (!feature) return
@@ -727,13 +667,8 @@ export function MapCanvas({
     if (!coords) return
 
     // ── Fly-to zoom bâtiment (niveau 17 = bâtiments bien visibles) ──
-    const view = mapInstanceRef.current.getView()
-    const currentZoom = view.getZoom() ?? DEFAULT_ZOOM
-    view.animate({
-      center:   coords,
-      zoom:     Math.max(currentZoom, 17),   // au moins zoom 17 pour voir les bâtiments
-      duration: 700,
-    })
+    const currentZoom = mapInstanceRef.current.getView().getZoom() ?? DEFAULT_ZOOM
+    controllerRef.current.zoomTo(coords, Math.max(currentZoom, 17), 700)
 
     // ── Anneau de sélection géographique à tirets ──────────────────
     const { OlFeature, OlCircleGeom, Style, Stroke } = olRef.current
@@ -761,53 +696,56 @@ export function MapCanvas({
   // ── 3b. Zone d'intérêt : masque, contour et cadrage ───────────
 
   useEffect(() => {
-    const ol     = olRef.current
-    const source = zoneSourceRef.current
-    if (!ol || !source) return
+    const ol  = olRef.current
+    const map = mapInstanceRef.current
+    if (!ol || !map) return
 
-    const { OlFeature, OlPolygon, Style, Fill, Stroke, fromLonLat } = ol
-    source.clear()
+    const { geoJsonToFeatures, createMaskLayer } = ol
 
-    const decoupe = decouperMasque(zone)
-    if (!decoupe) return
+    // La couche entière est reconstruite à chaque changement de zone : le
+    // masque dépend de la géométrie, il n'y a rien à conserver d'un rendu au
+    // suivant.
+    if (zoneLayerRef.current) {
+      map.removeLayer(zoneLayerRef.current)
+      zoneLayerRef.current = null
+    }
 
-    // Les anneaux arrivent en degrés WGS84 ; la carte travaille en Web
-    // Mercator. La conversion est faite ici, une fois, plutôt que confiée au
-    // lecteur GeoJSON d'OpenLayers : l'anneau du monde n'appartient à aucune
-    // géométrie source et devrait de toute façon être projeté à la main.
-    const enMercator = (anneaux: number[][][]) =>
-      anneaux.map((anneau) => anneau.map(([lon, lat]) => fromLonLat([lon, lat])))
+    if (!zone?.geometry) return
 
-    const styleMasque = new Style({
+    // geoJsonToFeatures fait la conversion WGS84 → Web Mercator (et gère
+    // Polygon/MultiPolygon) — plus besoin de la projeter anneau par anneau ici.
+    const [zoneFeature] = geoJsonToFeatures({ type: 'Feature', properties: {}, geometry: zone.geometry })
+    const zoneGeometry = zoneFeature?.getGeometry()
+    if (!zoneGeometry) return
+
+    // createMaskLayer assombrit tout ce qui est hors de la géométrie, en
+    // gérant lui-même les enclaves (les trous propres à la zone,
+    // géographiquement dedans mais administrativement dehors — courant sur un
+    // découpage régional) et le sens de rotation des anneaux, sans quoi le
+    // trou ne se perce pas et la zone entière est assombrie.
+    //
+    // zIndex 1 : au-dessus du fond de carte, sous tout le reste. Les bornes,
+    // les mesures et le marqueur GPS doivent rester à pleine luminosité même
+    // hors de la zone — assombrir une borne la rendrait difficile à
+    // distinguer d'une borne détruite.
+    const couche = createMaskLayer(zoneGeometry, {
       // 42 % d'opacité : assez pour que l'œil isole immédiatement la zone,
-      // assez peu pour que le fond de carte reste lisible à l'extérieur —
-      // un géomètre a besoin de voir la route par laquelle il arrive, même
+      // assez peu pour que le fond de carte reste lisible à l'extérieur — un
+      // géomètre a besoin de voir la route par laquelle il arrive, même
       // quand elle part de l'arrondissement voisin.
-      fill: new Fill({ color: 'rgba(14, 27, 34, 0.42)' }),
+      fillColor: 'rgba(14, 27, 34, 0.42)',
+      strokeColor: 'rgba(31, 93, 58, 0.9)',
+      strokeWidth: 2,
+      zIndex: 1,
     })
+    // Le masque couvre toute la carte : il ne doit jamais intercepter un clic,
+    // sans quoi plus aucune borne ne serait sélectionnable. C'est le
+    // `layerFilter` du gestionnaire de clic, restreint à la couche des bornes,
+    // qui l'assure — le maintenir en cas d'ajout d'une couche.
+    couche.set('nom', 'masque-zone')
 
-    const styleContour = new Style({
-      stroke: new Stroke({ color: 'rgba(31, 93, 58, 0.9)', width: 2 }),
-    })
-
-    const masque = new OlFeature(new OlPolygon(enMercator(decoupe.masque)))
-    masque.setStyle(styleMasque)
-    source.addFeature(masque)
-
-    // Enclaves : hors de la zone, mais situées dans la fenêtre percée par le
-    // masque. Sans ce second passage, elles apparaîtraient éclairées.
-    for (const enclave of decoupe.enclaves) {
-      const f = new OlFeature(new OlPolygon(enMercator([enclave])))
-      f.setStyle(styleMasque)
-      source.addFeature(f)
-    }
-
-    // Contour tracé en dernier pour rester au-dessus des aplats.
-    for (const contour of decoupe.contours) {
-      const f = new OlFeature(new OlPolygon(enMercator([contour])))
-      f.setStyle(styleContour)
-      source.addFeature(f)
-    }
+    map.addLayer(couche)
+    zoneLayerRef.current = couche
   }, [zone, mapPrete])
 
   /**
@@ -819,7 +757,7 @@ export function MapCanvas({
    * désoriente plus qu'il n'aide.
    */
   const cadrerSurZone = useCallback((duree = 700) => {
-    if (!zone || !mapInstanceRef.current || !olRef.current) return
+    if (!zone || !controllerRef.current || !olRef.current) return
 
     const { fromLonLat } = olRef.current
     const [ouest, sud, est, nord] = zone.bbox
@@ -832,13 +770,9 @@ export function MapCanvas({
       ? [24, 24, 130, 24]
       : [70, 80, 70, 80]
 
-    mapInstanceRef.current.getView().fit(etendue, {
-      padding: marge,
-      // Une commune peut être minuscule ; sans plafond, le cadrage
-      // plongerait à un zoom où plus aucune tuile n'est disponible.
-      maxZoom:  15,
-      duration: duree,
-    })
+    // maxZoom : une commune peut être minuscule ; sans plafond, le cadrage
+    // plongerait à un zoom où plus aucune tuile n'est disponible.
+    controllerRef.current.fitExtent(etendue, marge, { maxZoom: 15, duration: duree })
   }, [zone])
 
   useEffect(() => {
@@ -857,74 +791,60 @@ export function MapCanvas({
   // ── 4. Changement de fond de carte ────────────────────────────
 
   useEffect(() => {
-    if (!tileLayerRef.current || !olRef.current) return
-    const { XYZ, OSM } = olRef.current
-    const url = getBasemapUrl(basemap)
-    if (url) {
-      tileLayerRef.current.setSource(new XYZ({ url }))
-    } else {
-      tileLayerRef.current.setSource(new OSM())
-    }
-    tileLayerRef.current.set('preload', 4)
-  }, [basemap])
+    const map = mapInstanceRef.current
+    if (!map || !tileLayerRef.current || !olRef.current) return
+    const { createOsmBaseLayer, createXyzBaseLayer } = olRef.current
 
-  // ── 5. Outil mesure — ajout/retrait de l'interaction Draw ─────
+    const url = getBasemapUrl(basemap)
+    const nouveau = url
+      ? createXyzBaseLayer({ url, ...TUILES_CHARGEMENT })
+      : createOsmBaseLayer(TUILES_CHARGEMENT)
+    nouveau.setZIndex(0)
+
+    // La couche entière est remplacée, et non sa seule source : les fabriques
+    // du SDK rendent une couche complète. C'est aussi ce qui permet de
+    // rebrancher l'indicateur de chargement sur la nouvelle source — avec
+    // setSource(), les écouteurs restaient attachés à l'ancienne et
+    // l'indicateur cessait de réagir dès le premier changement de fond.
+    map.removeLayer(tileLayerRef.current)
+    map.addLayer(nouveau)
+    tileLayerRef.current = nouveau
+    brancherIndicateurTuiles(nouveau)
+  }, [basemap, brancherIndicateurTuiles])
+
+  // ── 5. Outil mesure (MeasureTool du SDK) ──────────────────────
 
   useEffect(() => {
-    if (!mapInstanceRef.current || !olRef.current || !measureSourceRef.current) return
-    const { Draw, Style, Stroke, Fill, CircleStyle } = olRef.current
-
-    // Supprimer l'interaction précédente
-    if (drawInteractionRef.current) {
-      mapInstanceRef.current.removeInteraction(drawInteractionRef.current)
-      drawInteractionRef.current = null
-    }
+    const outil = measureToolRef.current
+    if (!outil) return
 
     if (activeTool !== 'measure') {
-      measureSourceRef.current.clear()
+      outil.deactivate()
+      outil.clear()
       setMeasureText(null)
       return
     }
 
-    // Vider les mesures précédentes
-    measureSourceRef.current.clear()
+    outil.clear()
     setMeasureText(null)
-
-    const draw = new Draw({
-      source: measureSourceRef.current,
-      type:   'LineString',
-      style: new Style({
-        stroke: new Stroke({ color: '#B85729', width: 2, lineDash: [8, 4] }),
-        image: new CircleStyle({
-          radius: 5,
-          fill: new Fill({ color: '#B85729' }),
-          stroke: new Stroke({ color: '#fff', width: 2 }),
-        }),
-      }),
-    })
-
-    draw.on('drawend', (evt: any) => {
-      const { getLength } = olRef.current
-      const geom     = evt.feature.getGeometry()
-      const meters   = getLength(geom)   // longueur géodésique en mètres
-      setMeasureText(niceDistance(meters))
-    })
-
-    mapInstanceRef.current.addInteraction(draw)
-    drawInteractionRef.current = draw
-
-    return () => {
-      if (mapInstanceRef.current && drawInteractionRef.current) {
-        mapInstanceRef.current.removeInteraction(drawInteractionRef.current)
-        drawInteractionRef.current = null
-      }
+    try {
+      outil.activate('LineString')
+    } catch {
+      // MapCapabilityError : le rôle courant n'a pas la capacité 'measure'.
+      // La garde vit dans le SDK, donc elle tient même si le bouton est
+      // atteint autrement que par l'interface.
+      setActiveTool('pan')
+      setMeasureText(null)
+      return
     }
-  }, [activeTool])
+
+    return () => outil.deactivate()
+  }, [activeTool, mapPrete])
 
   // ── 6. Géolocalisation ────────────────────────────────────────
 
   const handleLocate = useCallback(() => {
-    if (!mapInstanceRef.current || !olRef.current) return
+    if (!mapInstanceRef.current || !controllerRef.current || !olRef.current) return
     if (!navigator.geolocation) { setGeoErreur('indisponible'); return }
 
     setLocating(true)
@@ -935,7 +855,7 @@ export function MapCanvas({
         const center = fromLonLat([pos.coords.longitude, pos.coords.latitude])
 
         // Centrer + zoomer
-        mapInstanceRef.current.getView().animate({ center, zoom: 16, duration: 800 })
+        controllerRef.current.zoomTo(center, 16, 800)
 
         // Placer / déplacer le marqueur de position
         if (locMarkerSourceRef.current) {
@@ -1010,13 +930,9 @@ export function MapCanvas({
    * dernier recours.
    */
   const centrerParDefaut = useCallback(() => {
-    if (!mapInstanceRef.current || !olRef.current) return
+    if (!controllerRef.current || !olRef.current) return
     const { fromLonLat } = olRef.current
-    mapInstanceRef.current.getView().animate({
-      center: fromLonLat(CAMEROON_CENTER),
-      zoom: DEFAULT_ZOOM,
-      duration: 600,
-    })
+    controllerRef.current.zoomTo(fromLonLat(CAMEROON_CENTER), DEFAULT_ZOOM, 600)
   }, [])
 
   const recadrer = useCallback(() => {
