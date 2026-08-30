@@ -198,16 +198,14 @@ export function MapCanvas({
   const mapRef             = useRef<HTMLDivElement>(null)
   const controllerRef      = useRef<any>(null)   // MapController (@websig-app/geo-core)
   const mapInstanceRef     = useRef<any>(null)   // instance ol/Map brute — controllerRef.getMap()
-  const vectorSourceRef    = useRef<any>(null)
-  const vectorLayerRef     = useRef<any>(null)
-  const tileLayerRef       = useRef<any>(null)
+  const amasRef            = useRef<any>(null)   // GroupedClusterLayer (@websig-app/geo-core)
   const measureToolRef     = useRef<any>(null)   // MeasureTool (@websig-app/geo-core)
   const zoneLayerRef       = useRef<any>(null)   // couche masque, reconstruite par createMaskLayer
   const olRef              = useRef<any>(null)   // modules OL mis en cache après init
   const locMarkerSourceRef = useRef<any>(null)   // marqueur GPS utilisateur
   const selectionSourceRef = useRef<any>(null)   // anneau de sélection (cercle géographique)
   const zoneCadreeRef      = useRef<string | null>(null)  // dernière zone sur laquelle on a recadré
-  const displaySourceRef   = useRef<any>(null)   // features d'affichage (clusters + points seuls)
+  const abonnementsRef     = useRef<any[]>([])   // abonnements RxJS du SDK, résiliés au démontage
   const selectedIdRef      = useRef<number | null>(null)   // id sélectionné (lu par le style OL)
   const currentZoomRef     = useRef<number>(DEFAULT_ZOOM)  // zoom courant (lu par le style OL pour les étiquettes)
   const latestPointsRef    = useRef<GeoJSONFeatureCollection | null>(null) // dernières données reçues (résout la race condition init async / cache)
@@ -229,16 +227,6 @@ export function MapCanvas({
   const [isOffline,         setIsOffline]          = useState(false)
   const [tilesLoading,      setTilesLoading]       = useState(false)
   const [mapPrete,          setMapPrete]           = useState(false)
-
-  // Indicateur « chargement de la carte » : à rebrancher sur chaque nouvelle
-  // couche de fond, les écouteurs étant portés par la source.
-  const brancherIndicateurTuiles = useCallback((couche: any) => {
-    const source = couche.getSource()
-    if (!source) return
-    source.on('tileloadstart', () => setTilesLoading(true))
-    source.on('tileloadend', () => setTilesLoading(false))
-    source.on('tileloaderror', () => setTilesLoading(false))
-  }, [])
 
   // ── 1. Initialisation de la carte ──────────────────────────────
 
@@ -276,7 +264,8 @@ export function MapCanvas({
         createOsmBaseLayer,
         createXyzBaseLayer,
         geoJsonToFeatures,
-        clusterByGroup,
+        getClusterMembers,
+        getClusterSize,
         createCountRingStyle,
       } = geoCore
 
@@ -290,99 +279,73 @@ export function MapCanvas({
         OlFeature, OlPoint, OlCircleGeom,
         getLength: sphereModule.getLength,
         createMaskLayer, createOsmBaseLayer, createXyzBaseLayer,
-        geoJsonToFeatures, clusterByGroup,
+        geoJsonToFeatures, getClusterSize,
       }
 
-      // ── Source vecteur brute — points géodésiques ────────────────
-      const vectorSource = new VectorSource({ format: new GeoJSON() })
-      vectorSourceRef.current = vectorSource
+      // ── Style des marqueurs / amas ───────────────────────────────
+      // Le SDK tient les deux sources (brutes / affichées) et recalcule les
+      // amas au changement de résolution : il ne reste ici que le style.
+      const styleAmas = (feature: any) => {
+        const members = getClusterMembers(feature)
+        const size    = getClusterSize(feature)
 
-      // ── Source d'affichage — alimentée par clusterByGroup ──
-      // Contient clusters (N membres) + points seuls, regroupés par (ordre, statut)
-      const displaySource = new VectorSource()
-      displaySourceRef.current = displaySource
+        const ordre  = feature.get('ordre')  ?? members[0]?.getProperties()?.ordre  ?? 3
+        const statut = feature.get('statut') ?? members[0]?.getProperties()?.statut ?? 'inconnu'
+        const color  = STATUT_COLORS[statut] ?? '#9BA5AC'
 
-      // ── Helper : reconstruit displaySource à partir de vectorSource ──
-      const refreshClusters = () => {
-        if (!vectorSourceRef.current || !displaySourceRef.current || !mapInstanceRef.current) return
-        const resolution = mapInstanceRef.current.getView().getResolution() ?? 1
-        const raw        = vectorSourceRef.current.getFeatures()
-        const { clusterByGroup: cluster } = olRef.current
-        const display = cluster(raw, resolution, { getGroupKey: clusterGroupKey, pixelDistance: 40 })
-        displaySourceRef.current.clear()
-        displaySourceRef.current.addFeatures(display)
-      }
+        if (size > 1) {
+          // ── Amas : le symbole de l'entité, inchangé, cerclé d'un anneau ──
+          // dans sa propre couleur de statut, avec le compte en étiquette
+          // contre l'anneau.
+          //
+          // L'anneau signale l'agrégation sans qu'on ait à lire le chiffre,
+          // et n'ajoute aucune couleur au vocabulaire de la légende — une
+          // pastille rouge, elle, annonçait « détruit » sur un amas de
+          // bornes conformes. Le symbole garde forme (ordre) et couleur
+          // (statut) : un amas se lit comme ce qu'il agrège.
+          return [
+            new Style({
+              image: new OlIcon({ src: makeSvgMarker(ordre, color, false), anchor: [0.5, 0.5] }),
+            }),
+            createCountRingStyle(size, { color, radius: CLUSTER_RING_RADIUS }),
+          ]
+        }
 
-      // ── Style des marqueurs / clusters ──────────────────────────
-      const vectorLayer = new VectorLayer({
-        source: displaySource,
-        zIndex: 10,
-        // Ne pas re-rendre pendant les animations/interactions → tuiles restent nettes
-        updateWhileAnimating:   false,
-        updateWhileInteracting: false,
-        style: (feature: any) => {
-          const members = feature.get('_members') as any[] | undefined
-          const size    = feature.get('_size')    as number ?? 1
+        // ── Point unique ──────────────────────────────────────────────────
+        const fid   = feature.getId()
+        const isSel = fid === selectedIdRef.current
+        const imgSrc = makeSvgMarker(ordre, color, isSel)
 
-          const ordre  = feature.get('ordre')  ?? members?.[0]?.getProperties()?.ordre  ?? 3
-          const statut = feature.get('statut') ?? members?.[0]?.getProperties()?.statut ?? 'inconnu'
-          const color  = STATUT_COLORS[statut] ?? '#9BA5AC'
-
-          if (size > 1) {
-            // ── Amas : le symbole de l'entité, inchangé, cerclé d'un anneau ──
-            // dans sa propre couleur de statut, avec le compte en étiquette
-            // contre l'anneau.
-            //
-            // L'anneau signale l'agrégation sans qu'on ait à lire le chiffre,
-            // et n'ajoute aucune couleur au vocabulaire de la légende — une
-            // pastille rouge, elle, annonçait « détruit » sur un amas de
-            // bornes conformes. Le symbole garde forme (ordre) et couleur
-            // (statut) : un amas se lit comme ce qu'il agrège.
-            return [
-              new Style({
-                image: new OlIcon({ src: makeSvgMarker(ordre, color, false), anchor: [0.5, 0.5] }),
-              }),
-              createCountRingStyle(size, { color, radius: CLUSTER_RING_RADIUS }),
-            ]
-          }
-
-          // ── Point unique ──────────────────────────────────────────────────
-          const fid   = feature.getId()
-          const isSel = fid === selectedIdRef.current
-          const imgSrc = makeSvgMarker(ordre, color, isSel)
-
-          // Étiquettes à partir du zoom 14 (navigation terrain)
-          //  · zoom 14-15 → matricule (code court, unique)
-          //  · zoom >= 16  → nom géographique (plus descriptif)
-          const zoom = currentZoomRef.current
-          if (zoom >= 14) {
-            const rawProps = members?.[0]?.getProperties() ?? {}
-            const label    = zoom >= 16
-              ? (rawProps.nom || rawProps.matricule || '')
-              : (rawProps.matricule || '')
-
-            return new Style({
-              image: new OlIcon({ src: imgSrc, anchor: [0.5, 0.5] }),
-              text: label
-                ? new OlText({
-                    text:       label,
-                    font:       'bold 10px "Inter", system-ui, sans-serif',
-                    fill:       new Fill({ color: '#111827' }),
-                    stroke:     new Stroke({ color: 'rgba(255,255,255,0.92)', width: 3 }),
-                    offsetY:    isSel ? -17 : -14,   // au-dessus du marqueur
-                    overflow:   true,
-                    placement:  'point',
-                  })
-                : undefined,
-            })
-          }
+        // Étiquettes à partir du zoom 14 (navigation terrain)
+        //  · zoom 14-15 → matricule (code court, unique)
+        //  · zoom >= 16  → nom géographique (plus descriptif)
+        const zoom = currentZoomRef.current
+        if (zoom >= 14) {
+          const rawProps = members[0]?.getProperties() ?? {}
+          const label    = zoom >= 16
+            ? (rawProps.nom || rawProps.matricule || '')
+            : (rawProps.matricule || '')
 
           return new Style({
             image: new OlIcon({ src: imgSrc, anchor: [0.5, 0.5] }),
+            text: label
+              ? new OlText({
+                  text:       label,
+                  font:       'bold 10px "Inter", system-ui, sans-serif',
+                  fill:       new Fill({ color: '#111827' }),
+                  stroke:     new Stroke({ color: 'rgba(255,255,255,0.92)', width: 3 }),
+                  offsetY:    isSel ? -17 : -14,   // au-dessus du marqueur
+                  overflow:   true,
+                  placement:  'point',
+                })
+              : undefined,
           })
-        },
-      })
-      vectorLayerRef.current = vectorLayer
+        }
+
+        return new Style({
+          image: new OlIcon({ src: imgSrc, anchor: [0.5, 0.5] }),
+        })
+      }
 
       // Layer marqueur position utilisateur (GPS)
       const locMarkerSource = new VectorSource()
@@ -412,7 +375,6 @@ export function MapCanvas({
       // bandes grises pendant un zoom ou un réseau lent.
       const tileLayer = createOsmBaseLayer(TUILES_CHARGEMENT)
       tileLayer.setZIndex(0)
-      tileLayerRef.current = tileLayer
 
       // Zoom initial : préférence utilisateur > constante par défaut
       const savedZoom = Number(localStorage.getItem('rgnc-pref-zoom') || DEFAULT_ZOOM)
@@ -441,10 +403,24 @@ export function MapCanvas({
         pixelRatio: dpr,
       })
       map.addLayer(selectionLayer)
-      map.addLayer(vectorLayer)
       map.addLayer(locMarkerLayer)
       controllerRef.current = controller
       mapInstanceRef.current = map
+
+      // ── Couche d'amas par (ordre, statut) ────────────────────────
+      // Le SDK tient les deux sources et recalcule les amas quand la
+      // résolution change — plus de refreshClusters() à rappeler à chaque
+      // moveend, ni de moveend rejoué pour rien sur un simple déplacement.
+      const amas = controller.createGroupedClusterLayer({
+        getGroupKey: clusterGroupKey,
+        pixelDistance: 40,
+        style: styleAmas,
+        zIndex: 10,
+        // Ne pas re-rendre pendant les animations/interactions → tuiles restent nettes
+        updateWhileAnimating:   false,
+        updateWhileInteracting: false,
+      })
+      amasRef.current = amas
 
       // ── Outil de mesure du SDK ───────────────────────────────────
       // Le SDK possède sa propre couche ; on lui donne seulement son zIndex
@@ -470,67 +446,73 @@ export function MapCanvas({
       })
 
       // ── Indicateur de chargement des tuiles ──────────────────────
-      brancherIndicateurTuiles(tileLayer)
+      // tileLoading$ compte les tuiles en vol et suit le fond courant de
+      // lui-même : plus rien à rebrancher au changement de fond de carte.
+      abonnementsRef.current.push(
+        controller.tileLoading$.subscribe(({ loading }: { loading: boolean }) => setTilesLoading(loading)),
+      )
 
       // ── Race condition : si les données étaient déjà disponibles pendant l'init async ──
       // (TanStack Query retourne le cache instantanément au 2e passage sur la page,
       //  avant que les imports dynamiques OL soient résolus → useEffect[points] s'est
-      //  exécuté mais a vu vectorSourceRef.current = null → rien n'a été ajouté)
+      //  exécuté mais a vu amasRef.current = null → rien n'a été ajouté)
       if (latestPointsRef.current) {
         const fmt      = new GeoJSON()
-        const features = fmt.readFeatures(latestPointsRef.current, {
+        amas.setFeatures(fmt.readFeatures(latestPointsRef.current, {
           featureProjection: 'EPSG:3857',
           dataProjection:    'EPSG:4326',
-        })
-        vectorSource.addFeatures(features)
-        const resolution = map.getView().getResolution() ?? 1
-        const display = clusterByGroup(features, resolution, { getGroupKey: clusterGroupKey, pixelDistance: 40 })
-        displaySource.addFeatures(display)
+        }))
 
         // Pas de cadrage sur l'étendue des bornes ici : c'est la zone
         // d'intérêt qui commande la vue (effet 3b). Cadrer d'abord sur les
         // données puis sur la zone enchaînerait deux animations contraires.
       }
 
-      // Clic → sélection ou zoom cluster
-      map.on('click', (evt: any) => {
-        const displayFeature = map.forEachFeatureAtPixel(evt.pixel, (f: any) => f, {
-          layerFilter: (l: any) => l === vectorLayer,
-        })
-        if (!displayFeature) return
+      // Clic → sélection ou zoom sur un amas
+      abonnementsRef.current.push(
+        controller.click$.subscribe(({ pixel }: { pixel: number[] }) => {
+          const displayFeature = map.forEachFeatureAtPixel(pixel, (f: any) => f, {
+            layerFilter: (l: any) => l === amas.layer,
+          })
+          if (!displayFeature) return
 
-        const size    = displayFeature.get('_size') as number ?? 1
-        const members = displayFeature.get('_members') as any[] | undefined
+          const size    = getClusterSize(displayFeature)
+          const members = getClusterMembers(displayFeature)
 
-        if (size > 1) {
-          // Cluster → zoom pour décluster
-          const view    = map.getView()
-          const center  = displayFeature.getGeometry()?.getCoordinates?.()
-          const curZoom = view.getZoom() ?? DEFAULT_ZOOM
-          view.animate({ center, zoom: curZoom + 3, duration: 500 })
-        } else {
-          // Point unique → sélection
-          // L'id est copié sur la display feature par clusterByGroup (voir clusterGroupKey)
-          const id = displayFeature.getId() as number ?? members?.[0]?.getId()
-          if (id != null) onPickPoint(id)
-        }
-      })
+          if (size > 1) {
+            // Amas → zoom pour le défaire
+            const view    = map.getView()
+            const center  = displayFeature.getGeometry()?.getCoordinates?.()
+            const curZoom = view.getZoom() ?? DEFAULT_ZOOM
+            view.animate({ center, zoom: curZoom + 3, duration: 500 })
+          } else {
+            // Point unique → sélection
+            // L'id est copié sur la feature d'affichage par clusterByGroup (voir clusterGroupKey)
+            const id = displayFeature.getId() as number ?? members[0]?.getId()
+            if (id != null) onPickPoint(id)
+          }
+        }),
+      )
 
-      // Pointermove → curseur pointer sur marqueur ou cluster + coordonnées
+      // Survol → curseur « pointer » sur un marqueur ou un amas + coordonnées
       // ─ On cible map.getViewport() (le div interactif OL, pas son conteneur parent)
       // ─ hitTolerance: 8 px pour absorber les petits marqueurs SVG
-      map.on('pointermove', (evt: any) => {
-        if (evt.dragging) return
-        const hit = map.hasFeatureAtPixel(evt.pixel, {
-          layerFilter:  (l: any) => l === vectorLayer,
-          hitTolerance: 8,
-        })
-        ;(map.getViewport() as HTMLElement).style.cursor = hit ? 'pointer' : ''
-        const [lon, lat] = toLonLat(evt.coordinate)
-        setCursorCoords([lon, lat])
-      })
+      // ─ pointerMove$ émet aussi pendant un glisser : c'est ici qu'on filtre.
+      abonnementsRef.current.push(
+        controller.pointerMove$.subscribe(({ pixel, coordinate, dragging }: any) => {
+          if (dragging) return
+          const hit = map.hasFeatureAtPixel(pixel, {
+            layerFilter:  (l: any) => l === amas.layer,
+            hitTolerance: 8,
+          })
+          ;(map.getViewport() as HTMLElement).style.cursor = hit ? 'pointer' : ''
+          const [lon, lat] = toLonLat(coordinate)
+          setCursorCoords([lon, lat])
+        }),
+      )
 
-      // Moveend → zoom + barre d'échelle + recalcul clusters + refresh étiquettes
+      // Moveend → zoom + barre d'échelle + refresh étiquettes. Le recalcul des
+      // amas est celui de la couche du SDK, qui écoute la vue elle-même.
       const updateZoomScale = () => {
         const view       = map.getView()
         const z          = view.getZoom() ?? DEFAULT_ZOOM
@@ -538,8 +520,6 @@ export function MapCanvas({
         setCurrentZoom(z)
         currentZoomRef.current = z   // lu par le style OL pour afficher/masquer les étiquettes
         setScaleLabel(niceDistance(72 * resolution))
-        // Recalculer les clusters selon la résolution courante
-        refreshClusters()
       }
       map.on('moveend', updateZoomScale)
       updateZoomScale()
@@ -549,19 +529,11 @@ export function MapCanvas({
       window.addEventListener('online',  () => setIsOffline(false))
       window.addEventListener('offline', () => setIsOffline(true))
 
-      // ── Resize : recalcul du canvas OL quand le conteneur change de taille ──
-      // Sur mobile, la barre d'adresse se rétracte en scrollant → le div carte
-      // change de hauteur SANS déclencher window.resize → OL conserve l'ancien
-      // canvas → bandes horizontales grises / tuiles décalées.
-      // ResizeObserver cible directement le div cible (mapRef.current).
-      const resizeObserver = new ResizeObserver(() => {
-        mapInstanceRef.current?.updateSize()
-      })
-      if (mapRef.current) resizeObserver.observe(mapRef.current)
-
-      // Fallback window.resize (Safari < 13, ou navigation desktop)
-      const onWindowResize = () => mapInstanceRef.current?.updateSize()
-      window.addEventListener('resize', onWindowResize)
+      // Pas de ResizeObserver ici : ol/Map en installe déjà un sur sa cible
+      // depuis OpenLayers 7 et appelle updateSize() tout seul — c'est ce qui
+      // rattrape la barre d'adresse mobile qui se rétracte au scroll, sans
+      // que window.resize soit émis. En poser un second ne ferait que
+      // dupliquer le même appel.
 
       // Signale que les couches existent. Les effets qui écrivent dedans —
       // le masque de zone en particulier — ont pu s'exécuter pendant les
@@ -573,10 +545,17 @@ export function MapCanvas({
     initMap()
     return () => {
       isMounted = false
+      // Les abonnements aux flux du SDK sont résiliés avant que le contrôleur
+      // ne complète ses sujets, et la couche d'amas retire son propre
+      // écouteur de vue — sans quoi elle recalculerait sur une carte détruite.
+      abonnementsRef.current.forEach((abonnement) => abonnement.unsubscribe())
+      abonnementsRef.current = []
       // L'outil de mesure possède sa propre couche et son abonnement : il se
       // détruit avant la carte, sinon result$ resterait ouvert.
       measureToolRef.current?.destroy()
       measureToolRef.current = null
+      amasRef.current?.destroy()
+      amasRef.current = null
       zoneLayerRef.current = null
       if (controllerRef.current) {
         controllerRef.current.destroy()
@@ -606,38 +585,29 @@ export function MapCanvas({
     // Toujours mémoriser les dernières données — résout la race condition :
     // TanStack Query peut retourner le cache *avant* que initMap() termine
     latestPointsRef.current = points
-    if (!vectorSourceRef.current || !points) return
+    if (!amasRef.current || !points) return
     async function updateFeatures() {
       const { default: GeoJSON } = await import('ol/format/GeoJSON')
-      const source = vectorSourceRef.current
-      source.clear()
+      const amas     = amasRef.current
       const fmt      = new GeoJSON()
       const features = fmt.readFeatures(points, {
         featureProjection: 'EPSG:3857',
         dataProjection:    'EPSG:4326',
       })
-      source.addFeatures(features)
-
-      // Reconstruire la source d'affichage (clusters + points seuls)
-      if (displaySourceRef.current && mapInstanceRef.current) {
-        const resolution = mapInstanceRef.current.getView().getResolution() ?? 1
-        const cluster = olRef.current?.clusterByGroup
-        if (cluster) {
-          const display = cluster(features, resolution, { getGroupKey: clusterGroupKey, pixelDistance: 40 })
-          displaySourceRef.current.clear()
-          displaySourceRef.current.addFeatures(display)
-        }
-      }
+      // setFeatures remplace les features brutes et reconstruit les amas à la
+      // résolution courante — les deux sources restent cohérentes.
+      amas.setFeatures(features)
 
       // ── Zoom automatique sur l'étendue des données ──────────────
       // Déclenché à chaque changement de filtre → la carte se recentre sur les points visibles
-      if (features.length > 0 && mapInstanceRef.current) {
-        const extent = source.getExtent()
+      // (sur `amas.source`, les features brutes : l'emprise des amas serait
+      //  celle de leurs centroïdes, donc légèrement trop serrée)
+      if (features.length > 0 && controllerRef.current) {
+        const extent = amas.source.getExtent()
         // getExtent() renvoie [Inf, Inf, -Inf, -Inf] si la source est vide
         if (isFinite(extent[0])) {
-          mapInstanceRef.current.getView().fit(extent, {
-            padding:  [60, 60, 60, 60],   // marge en px (top/right/bottom/left)
-            maxZoom:  16,                  // évite de trop zoomer sur 1 seul point
+          controllerRef.current.fitExtent(extent, [60, 60, 60, 60], {
+            maxZoom:  16,   // évite de trop zoomer sur 1 seul point
             duration: 600,
           })
         }
@@ -655,12 +625,14 @@ export function MapCanvas({
     // Nettoyer l'anneau quand rien n'est sélectionné
     if (selectedId == null) {
       selectionSourceRef.current?.clear()
-      vectorLayerRef.current?.changed()
+      amasRef.current?.layer.changed()
       return
     }
-    if (!mapInstanceRef.current || !controllerRef.current || !vectorSourceRef.current || !olRef.current) return
+    if (!mapInstanceRef.current || !controllerRef.current || !amasRef.current || !olRef.current) return
 
-    const feature = vectorSourceRef.current.getFeatureById(selectedId)
+    // Sur les features brutes : une entité agrégée dans un amas n'apparaît pas
+    // dans la source d'affichage, mais reste sélectionnable depuis la liste.
+    const feature = amasRef.current.source.getFeatureById(selectedId)
     if (!feature) return
 
     const coords = feature.getGeometry()?.getCoordinates?.()
@@ -689,8 +661,8 @@ export function MapCanvas({
     }))
     selectionSourceRef.current?.addFeature(ringFeature)
 
-    // Forcer le re-rendu du layer marqueurs (marqueur sélectionné grossit)
-    vectorLayerRef.current?.changed()
+    // Forcer le re-rendu de la couche d'amas (marqueur sélectionné grossit)
+    amasRef.current?.layer.changed()
   }, [selectedId])
 
   // ── 3b. Zone d'intérêt : masque, contour et cadrage ───────────
@@ -791,26 +763,22 @@ export function MapCanvas({
   // ── 4. Changement de fond de carte ────────────────────────────
 
   useEffect(() => {
-    const map = mapInstanceRef.current
-    if (!map || !tileLayerRef.current || !olRef.current) return
+    const controller = controllerRef.current
+    if (!controller || !olRef.current) return
     const { createOsmBaseLayer, createXyzBaseLayer } = olRef.current
 
     const url = getBasemapUrl(basemap)
     const nouveau = url
       ? createXyzBaseLayer({ url, ...TUILES_CHARGEMENT })
       : createOsmBaseLayer(TUILES_CHARGEMENT)
-    nouveau.setZIndex(0)
 
-    // La couche entière est remplacée, et non sa seule source : les fabriques
-    // du SDK rendent une couche complète. C'est aussi ce qui permet de
-    // rebrancher l'indicateur de chargement sur la nouvelle source — avec
-    // setSource(), les écouteurs restaient attachés à l'ancienne et
-    // l'indicateur cessait de réagir dès le premier changement de fond.
-    map.removeLayer(tileLayerRef.current)
-    map.addLayer(nouveau)
-    tileLayerRef.current = nouveau
-    brancherIndicateurTuiles(nouveau)
-  }, [basemap, brancherIndicateurTuiles])
+    // setBaseLayer remplace la couche entière (pas sa seule source), la
+    // repose sous les couches métier et rebranche tileLoading$ dessus. Avec
+    // setSource(), les écouteurs de tuiles resteraient attachés à l'ancienne
+    // source et l'indicateur cesserait de réagir dès le premier changement.
+    // Le zIndex 0 est hérité du fond remplacé, inutile de le repasser.
+    controller.setBaseLayer(nouveau)
+  }, [basemap])
 
   // ── 5. Outil mesure (MeasureTool du SDK) ──────────────────────
 
