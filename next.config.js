@@ -30,13 +30,19 @@ const nextConfig = {
   // Headers HTTP de sécurité + cache
   async headers() {
     return [
-      {
-        // Assets statiques Next.js — cache long (immutable)
-        source: '/_next/static/(.*)',
-        headers: [
-          { key: 'Cache-Control', value: 'public, max-age=31536000, immutable' },
-        ],
-      },
+      // Assets statiques Next.js — cache long (immutable), en production
+      // uniquement. En développement les noms de chunks sont stables d'une
+      // compilation à l'autre : `immutable` y fait servir indéfiniment un
+      // chunk périmé, y compris après un rechargement forcé, et les
+      // modifications de code semblent alors sans effet.
+      ...(process.env.NODE_ENV === 'production'
+        ? [
+            {
+              source: '/_next/static/(.*)',
+              headers: [{ key: 'Cache-Control', value: 'public, max-age=31536000, immutable' }],
+            },
+          ]
+        : []),
       {
         // Pages HTML — revalidation à chaque requête
         source: '/(.*)',

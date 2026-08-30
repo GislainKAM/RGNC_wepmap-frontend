@@ -80,6 +80,12 @@ jobs:
             NEXT_PUBLIC_API_URL=${{ env.API_URL }}
             NEXT_PUBLIC_BACKEND_HOSTNAME=${{ env.BACKEND_HOSTNAME }}
             NEXT_PUBLIC_APP_NAME=RGNC WebMap
+            # Lecture de @websig-app/geo-core sur GitHub Packages. Le
+            # GITHUB_TOKEN du workflow suffit si le paquet appartient au même
+            # propriétaire ; sinon renseigner le secret PACKAGES_READ_TOKEN
+            # (portée read:packages), le SDK vivant sous l'organisation
+            # websig-app.
+            NODE_AUTH_TOKEN=${{ secrets.PACKAGES_READ_TOKEN || secrets.GITHUB_TOKEN }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
 

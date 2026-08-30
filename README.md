@@ -51,13 +51,42 @@ Interface WebGIS pour la consultation et la gestion du **Réseau Géodésique Na
 
 - **Node.js** 18+ (20 LTS recommandé)
 - Backend Django actif (voir [RGNC_wepmap-backend](https://github.com/GislainKAM/RGNC_wepmap-backend))
+- Un jeton GitHub avec la portée `read:packages`, pour installer
+  `@websig-app/geo-core` — voir [Installation](#installation)
 
 ---
 
 ## Installation
 
+### Prérequis : accès à GitHub Packages
+
+La carte s'appuie sur `@websig-app/geo-core`, publié sur **GitHub Packages** et
+non sur npmjs.com. GitHub y exige une authentification même pour un paquet
+public : sans jeton, `npm ci` échoue sur une erreur 401.
+
+Il faut donc un jeton portant la portée `read:packages`, exposé dans
+`NODE_AUTH_TOKEN` — c'est la variable que lit le `.npmrc` du dépôt, lequel ne
+contient lui-même aucun secret.
+
 ```bash
-# 1. Installer les dépendances
+# Avec GitHub CLI, le plus simple :
+gh auth refresh -s read:packages
+export NODE_AUTH_TOKEN=$(gh auth token)
+
+# Sinon, un jeton personnel (Settings > Developer settings > Tokens) :
+export NODE_AUTH_TOKEN=<jeton read:packages>
+```
+
+Sous Windows (PowerShell) : `$env:NODE_AUTH_TOKEN = "<jeton>"`.
+
+En CI, le jeton passe par le secret `PACKAGES_READ_TOKEN` : le SDK vit sous
+l'organisation `websig-app` et ce dépôt sous `GislainKAM`, or le `GITHUB_TOKEN`
+d'un workflow est limité à son propre dépôt et ne franchit pas cette frontière.
+
+### Étapes
+
+```bash
+# 1. Installer les dépendances (voir prérequis ci-dessus)
 npm ci
 
 # 2. Configurer l'environnement
