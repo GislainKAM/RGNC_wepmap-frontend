@@ -37,7 +37,7 @@ export function SectionDashboard({ onGoTo, onToast }: { onGoTo: (s: AdminSection
       orders:  ordreByRegion[r.region__code ?? '__null__'] ?? [],
     }))
   const sigs = sigsData?.results ?? []
-  const sigEnAttente = sigs.filter((s) => s.statut_traitement === 'attente')
+  const sigEnAttente = sigs.filter((s) => s.statut_traitement === 'en_attente')
 
   return (
     <div>
@@ -124,7 +124,7 @@ export function SectionDashboard({ onGoTo, onToast }: { onGoTo: (s: AdminSection
                     <td style={{ fontFamily: 'var(--font-mono)', fontSize: 11 }}>P-{s.point}</td>
                     <td>{s.type_label || s.type_signalement}</td>
                     <td style={{ color: 'var(--fg-3)' }}>{new Date(s.date_signalement).toLocaleDateString()}</td>
-                    <td><span className={`badge ${s.statut_traitement === 'resolu' ? 'badge-success' : s.statut_traitement === 'attente' ? 'badge-warning' : 'badge-info'}`}><span className="badge-dot" />{s.statut_traitement_label || s.statut_traitement}</span></td>
+                    <td><span className={`badge ${s.statut_traitement === 'resolu' ? 'badge-success' : s.statut_traitement === 'en_attente' ? 'badge-warning' : 'badge-info'}`}><span className="badge-dot" />{s.statut_traitement_label || s.statut_traitement}</span></td>
                   </tr>
                 ))}
               </tbody>

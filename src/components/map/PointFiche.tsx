@@ -90,7 +90,7 @@ export function PointFiche({ pointId, onClose, onToast }: PointFicheProps) {
   const dateLocale = lang === 'fr' ? frLocale : enUS
 
   const { data: point, isLoading } = usePointDetail(pointId)
-  const { data: fiche }            = useFicheSignaletique(pointId)
+  const { data: fiche }            = useFicheSignaletique(pointId, isAuth)
   const { data: historique }       = useHistoriqueStatuts(pointId)
 
   if (pointId === null) return null
@@ -124,8 +124,10 @@ export function PointFiche({ pointId, onClose, onToast }: PointFicheProps) {
     try {
       await pointApi.telecharger(pointId!, point.matricule)
       onToast?.(t('fiche.toast.telechargement_ok'), 'success')
-    } catch {
-      onToast?.(t('fiche.toast.telechargement_err'), 'danger')
+    } catch (e) {
+      // Le message serveur distingue quota atteint, fichier manquant, droits.
+      const detail = (e as Error)?.message
+      onToast?.(detail ? `${t('fiche.toast.telechargement_err')} : ${detail}` : t('fiche.toast.telechargement_err'), 'danger')
     } finally {
       setIsDownloading(false)
     }
@@ -478,7 +480,7 @@ export function PointFiche({ pointId, onClose, onToast }: PointFicheProps) {
                   : <Icon name="download" size={15} style={{ color: 'var(--fg-3)', flexShrink: 0 }} />
                 }
               </div>
-            ) : (
+            ) : !(point?.a_fiche_pdf && !isAuth) && (
               <p style={{ color: 'var(--fg-3)', fontSize: 13 }}>{t('fiche.doc.aucun')}</p>
             )}
 
@@ -527,7 +529,11 @@ export function PointFiche({ pointId, onClose, onToast }: PointFicheProps) {
         <Button
           variant="ghost"
           size="sm"
-          onClick={() => setShowSignalement(true)}
+          onClick={() => {
+            // Évite de remplir tout le formulaire pour un refus à l'envoi.
+            if (!isAuth) { onToast?.(t('signal.login'), 'warning'); return }
+            setShowSignalement(true)
+          }}
         >
           <Icon name="triangle-alert" size={13} />
           {t('fiche.btn.signaler')}

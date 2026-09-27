@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/Button'
 import { useSignalerBorne } from '@/hooks/useGeodeticPoints'
 import { useLanguage } from '@/hooks/useLanguage'
 import type { TranslationKey } from '@/lib/i18n/fr'
+import type { TypeSignalement } from '@/lib/types'
 
 // ── Types ────────────────────────────────────────────────────────
 
@@ -18,22 +19,22 @@ interface SignalementModalProps {
 
 // ── Constantes — types de problème ───────────────────────────────
 
-const TYPE_KEYS = [
-  'borne_detruite',
-  'borne_degradee',
-  'erreur_coordonnees',
-  'acces_bloque',
+// Valeurs de Signalement.TypeSignalement côté backend : toute autre valeur
+// est rejetée en 400.
+const TYPE_KEYS: readonly TypeSignalement[] = [
+  'destruction',
+  'degradation',
+  'deplacement',
+  'inaccessible',
   'autre',
-] as const
-
-type TypeSignalement = typeof TYPE_KEYS[number]
+]
 
 const TYPE_I18N: Record<TypeSignalement, TranslationKey> = {
-  borne_detruite:     'signal.type.detruite',
-  borne_degradee:     'signal.type.degradee',
-  erreur_coordonnees: 'signal.type.erreur_coords',
-  acces_bloque:       'signal.type.acces',
-  autre:              'signal.type.autre',
+  destruction:  'signal.type.detruite',
+  degradation:  'signal.type.degradee',
+  deplacement:  'signal.type.deplacement',
+  inaccessible: 'signal.type.acces',
+  autre:        'signal.type.autre',
 }
 
 // ── Composant ────────────────────────────────────────────────────
@@ -370,7 +371,9 @@ export function SignalementModal({
                 display: 'flex', gap: 8, alignItems: 'center',
               }}>
                 <Icon name="alert-circle" size={14} />
-                {t('signal.error')}
+                {/* Le serveur explique les refus utiles : adresse non
+                    confirmée, quota horaire atteint, photo invalide. */}
+                {(mutation.error as any)?.response?.data?.message || t('signal.error')}
               </div>
             )}
           </div>

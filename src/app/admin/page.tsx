@@ -55,7 +55,7 @@ export default function AdminPage() {
   // Badges dynamiques
   const { data: sigsData }     = useSignalements()
   const { data: demandesData } = useDemandes({ statut: 'attente' })
-  const sigBadge     = sigsData?.results?.filter((s) => s.statut_traitement === 'attente').length ?? 0
+  const sigBadge     = sigsData?.results?.filter((s) => s.statut_traitement === 'en_attente').length ?? 0
   const demandeBadge = demandesData?.count ?? 0
 
   useEffect(() => {

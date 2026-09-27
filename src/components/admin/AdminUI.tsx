@@ -71,7 +71,8 @@ export function BarChartSVG({
       onMouseLeave={() => setHovered(null)}
     >
       {/* Lignes de grille + labels axe Y */}
-      {[0, Math.round(maxV / 4), Math.round(maxV / 2), Math.round(maxV * 3 / 4), maxV].map((v) => {
+      {/* Set : avec un petit maximum, l'arrondi produit des graduations en double. */}
+      {Array.from(new Set([0, Math.round(maxV / 4), Math.round(maxV / 2), Math.round(maxV * 3 / 4), maxV])).map((v) => {
         const y = offsetY + pT + cH - (v / maxV) * cH
         return (
           <g key={v}>

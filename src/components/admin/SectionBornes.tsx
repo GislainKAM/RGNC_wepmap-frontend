@@ -8,8 +8,9 @@ import {
   useAdminBornes, useAdminBorneDetail,
   useCreateBorne, useUpdateBorne, useDeleteBornes,
 } from '@/hooks/useAdmin'
+import { useFicheSignaletique, QUERY_KEYS } from '@/hooks/useGeodeticPoints'
 import { regionApi, departementApi, communeApi, pointApi } from '@/lib/api'
-import { useQuery } from '@tanstack/react-query'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { STATUT_COLORS as STATUT_COLORS_CONST, RESEAU_LABELS as RESEAU_LABELS_CONST } from '@/lib/constants'
 import type {
   PointGeodesiqueLight, PointGeodesiqueDetail,
@@ -88,6 +89,26 @@ function BorneSlideOver({ editId, onClose, onToast }: {
     setDeletePhoto(true)
   }
 
+  // ── Fiche signalétique PDF ────────────────────────────────────
+  const queryClient                        = useQueryClient()
+  const { data: fiche }                    = useFicheSignaletique(editId)
+  const ficheInputRef                      = useRef<HTMLInputElement>(null)
+  const [ficheFile,     setFicheFile]      = useState<File | null>(null)
+  const [retirerFiche,  setRetirerFiche]   = useState(false)
+  const MAX_PDF = 20 * 1024 * 1024
+
+  const handleFicheSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (ficheInputRef.current) ficheInputRef.current.value = ''
+    if (!file) return
+    if (!file.name.toLowerCase().endsWith('.pdf') || file.size > MAX_PDF) {
+      onToast(t('admin.fiche.err_format'), 'warning')
+      return
+    }
+    setFicheFile(file)
+    setRetirerFiche(false)
+  }
+
   useEffect(() => {
     if (detail) {
       setForm({
@@ -152,6 +173,19 @@ function BorneSlideOver({ editId, onClose, onToast }: {
         } else if (deletePhoto) {
           await pointApi.deletePhoto(savedId)
         }
+      }
+
+      if (savedId && (ficheFile || (retirerFiche && fiche))) {
+        try {
+          if (ficheFile) await pointApi.uploadFiche(savedId, ficheFile)
+          else           await pointApi.deleteFiche(savedId)
+        } catch (e: any) {
+          const detail = e?.response?.data?.detail || e?.response?.data?.message
+          onToast(detail ? `${t('admin.fiche.err_envoi')} : ${detail}` : t('admin.fiche.err_envoi'), 'danger')
+        }
+        queryClient.invalidateQueries({ queryKey: QUERY_KEYS.fiche(savedId) })
+        queryClient.invalidateQueries({ queryKey: QUERY_KEYS.detail(savedId) })
+        queryClient.invalidateQueries({ queryKey: ['points', 'stats'] })
       }
 
       onClose()
@@ -375,6 +409,47 @@ function BorneSlideOver({ editId, onClose, onToast }: {
                 </div>
                 <div>JPG, PNG ou WebP — max 5 Mo</div>
               </div>
+            )}
+
+            {/* ── Fiche signalétique PDF ── */}
+            <div style={sec}>{t('admin.borne.s.fiche')}</div>
+            <input ref={ficheInputRef} type="file" accept="application/pdf,.pdf" style={{ display: 'none' }} onChange={handleFicheSelect} />
+            {(ficheFile || (fiche && !retirerFiche)) ? (
+              <div style={{
+                display: 'flex', alignItems: 'center', gap: 10, padding: '9px 11px', marginBottom: 10,
+                border: '1px solid var(--border-subtle)', borderRadius: 'var(--radius-sm)', background: 'var(--bg-sunken)',
+              }}>
+                <Icon name="file-text" size={18} style={{ color: 'var(--rgnc-foret-700)', flexShrink: 0 }} />
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontSize: 12, fontWeight: 500, color: 'var(--fg-1)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                    {ficheFile ? ficheFile.name : `Fiche_${detail?.matricule ?? ''}.pdf`}
+                  </div>
+                  <div style={{ fontSize: 11, color: 'var(--fg-3)' }}>
+                    {ficheFile
+                      ? `${Math.max(1, Math.round(ficheFile.size / 1024))} Ko · ${t('admin.fiche.nouvelle')}`
+                      : `v${fiche!.version} · ${fiche!.taille_ko} Ko · ${new Date(fiche!.date_upload).toLocaleDateString()}`}
+                  </div>
+                </div>
+                <button type="button" className="btn btn-ghost btn-sm" style={{ fontSize: 11 }} onClick={() => ficheInputRef.current?.click()}>
+                  {t('admin.fiche.remplacer')}
+                </button>
+                <button type="button" className="btn btn-ghost btn-sm" style={{ fontSize: 11, color: 'var(--rgnc-danger)' }}
+                  onClick={() => { setFicheFile(null); setRetirerFiche(true) }}>
+                  {t('admin.fiche.retirer')}
+                </button>
+              </div>
+            ) : (
+              <button type="button" onClick={() => ficheInputRef.current?.click()} style={{
+                width: '100%', marginBottom: 10, padding: '14px 16px', cursor: 'pointer', fontFamily: 'inherit',
+                border: '2px dashed var(--border-strong)', borderRadius: 'var(--radius-sm)', background: 'none',
+                color: 'var(--fg-3)', fontSize: 12, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
+              }}>
+                <Icon name="file-text" size={16} />
+                <span><span style={{ fontWeight: 500, color: 'var(--fg-2)' }}>{t('admin.fiche.ajouter')}</span> — {t('admin.fiche.hint')}</span>
+              </button>
+            )}
+            {retirerFiche && fiche && !ficheFile && (
+              <div style={{ fontSize: 11, color: 'var(--rgnc-danger)', marginTop: -4, marginBottom: 10 }}>{t('admin.fiche.a_retirer')}</div>
             )}
 
             {(createMut.error || updateMut.error) && (

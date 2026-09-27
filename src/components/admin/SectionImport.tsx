@@ -89,7 +89,7 @@ export function SectionImport({ onToast }: { onToast: (m: string, t?: ToastType)
             onClick={() => fileRef.current?.click()}
             className="admin-dropzone"
             style={{ border: `2px dashed ${dragging ? 'var(--rgnc-foret-700)' : 'var(--border-subtle)'}`, borderRadius: 'var(--radius-md)', background: dragging ? 'var(--rgnc-foret-50)' : 'var(--bg-surface)', padding: '48px 24px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 16, cursor: 'pointer', transition: 'all 150ms' }}>
-            <input ref={fileRef} type="file" accept=".csv,.json,.geojson,.pdf" style={{ display: 'none' }} onChange={(e) => pickFile(e.target.files?.[0])} />
+            <input ref={fileRef} type="file" accept=".csv" style={{ display: 'none' }} onChange={(e) => pickFile(e.target.files?.[0])} />
             <div style={{ width: 64, height: 64, borderRadius: 'var(--radius-md)', border: '2px dashed var(--border-subtle)', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'var(--bg-elevated)' }}>
               <Icon name="arrow-right" size={28} color="var(--fg-3)" style={{ transform: 'rotate(-90deg)' }} />
             </div>
@@ -103,10 +103,10 @@ export function SectionImport({ onToast }: { onToast: (m: string, t?: ToastType)
             <div className="admin-card">
               <div className="admin-card-head"><h3>{t('admin.import.formats_titre')}</h3></div>
               <div style={{ padding: '12px 16px', display: 'flex', flexDirection: 'column', gap: 10 }}>
+                {/* Seul le CSV est traité par /points/importer/. Les fiches PDF
+                    se déposent borne par borne, depuis l'édition d'une borne. */}
                 {[
                   { fmt: 'CSV',  col: 'var(--rgnc-success)', desc: 'Modèle MINDCAF — colonnes requises' },
-                  { fmt: 'PDF',  col: 'var(--rgnc-danger)',  desc: 'Fiches scannées — OCR côté serveur' },
-                  { fmt: 'JSON', col: 'var(--rgnc-info)',    desc: 'GeoJSON WGS84 — export QGIS' },
                 ].map(({ fmt, col, desc }) => (
                   <div key={fmt} style={{ display: 'flex', gap: 10, alignItems: 'flex-start' }}>
                     <span style={{ fontFamily: 'var(--font-mono)', fontSize: 10, fontWeight: 700, background: 'var(--bg-sunken)', color: col, padding: '2px 7px', borderRadius: 'var(--radius-xs)', flexShrink: 0 }}>{fmt}</span>
