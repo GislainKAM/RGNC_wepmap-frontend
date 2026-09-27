@@ -12,8 +12,10 @@ import type {
   GeoJSONFeatureCollection, GeoJSONFeatureCollectionPaginated,
   PaginatedResponse, DemandeAcces, ImportResult,
   JWTTokens, FiltresCarteState, InscriptionFormData, ConnexionFormData,
-  ZoneInteret,
+  ZoneInteret, StatutBorne,
 } from './types'
+
+export type SignalementMaj = Partial<Signalement> & { statut_borne?: StatutBorne }
 
 // ═══════════════════════════════════════════════════════════════
 // INSTANCE AXIOS
@@ -352,7 +354,8 @@ export const signalementApi = {
       .then(r => r.data),
 
   /** Modifier le statut / assigner un agent */
-  update: (id: number, data: Partial<Signalement>) =>
+  /** statut_borne (à la résolution seulement) met à jour la borne et son historique */
+  update: (id: number, data: SignalementMaj) =>
     apiClient.patch<Signalement>(`/signalements/${id}/`, data).then(r => r.data),
 }
 

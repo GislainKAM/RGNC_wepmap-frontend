@@ -358,6 +358,8 @@ const fr = {
   'admin.sig.erreur':            "Impossible de charger les signalements",
   'admin.sig.erreur_maj':        "Impossible de mettre à jour le signalement",
   'admin.sig.photo':             "Voir la photo",
+  'admin.sig.statut_borne':      "Statut de la borne à la résolution",
+  'admin.sig.borne_inchangee':   "Borne inchangée",
 
   // ── Admin — Import ───────────────────────────────────────────────
   'admin.import.subtitle':       "CSV — traitement côté serveur",

@@ -360,6 +360,8 @@ const en: Record<TranslationKey, string> = {
   'admin.sig.erreur':            "Unable to load reports",
   'admin.sig.erreur_maj':        "Unable to update the report",
   'admin.sig.photo':             "View photo",
+  'admin.sig.statut_borne':      "Benchmark status on resolution",
+  'admin.sig.borne_inchangee':   "Benchmark unchanged",
 
   // ── Admin — Import ───────────────────────────────────────────────
   'admin.import.subtitle':       "CSV — server-side processing",

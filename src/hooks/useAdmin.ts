@@ -8,6 +8,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import {
   pointApi, signalementApi, utilisateurApi, demandeApi, importApi,
 } from '@/lib/api'
+import type { SignalementMaj } from '@/lib/api'
 import type {
   PointGeodesiqueDetail, Signalement, ProfilUtilisateur, FiltresCarteState,
 } from '@/lib/types'
@@ -117,10 +118,16 @@ export function useSignalements(params: { statut?: string; page?: number } = {})
 export function useUpdateSignalement() {
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: ({ id, data }: { id: number; data: Partial<Signalement> }) =>
+    mutationFn: ({ id, data }: { id: number; data: SignalementMaj }) =>
       signalementApi.update(id, data),
-    onSuccess: () => {
+    onSuccess: (_r, { data }) => {
       qc.invalidateQueries({ queryKey: ['admin', 'signalements'] })
+      // La résolution peut avoir changé le statut de la borne : carte,
+      // fiche, historique et statistiques sont à rafraîchir.
+      if (data.statut_borne) {
+        qc.invalidateQueries({ queryKey: ['points'] })
+        qc.invalidateQueries({ queryKey: ['admin', 'bornes'] })
+      }
     },
   })
 }

@@ -1,16 +1,26 @@
 'use client'
 
-import React from 'react'
+import React, { useState } from 'react'
 import { Icon } from '@/components/ui/Icon'
 import { useLanguage } from '@/hooks/useLanguage'
 import { useSignalements, useUpdateSignalement } from '@/hooks/useAdmin'
-import type { Signalement, StatutTraitement } from '@/lib/types'
+import type { Signalement, StatutTraitement, StatutBorne, TypeSignalement } from '@/lib/types'
 import { Spinner, ApiError } from './AdminUI'
 import type { ToastType } from './adminUtils'
 
 // ── Types locaux ──────────────────────────────────────────────────────────────
 
 type SigStatus = StatutTraitement
+type OnMove = (id: number, s: SigStatus, statutBorne?: StatutBorne) => void
+
+// Statut de borne proposé à la résolution ; l'admin peut le changer.
+const STATUT_BORNE_PROPOSE: Record<TypeSignalement, StatutBorne | ''> = {
+  destruction:  'detruit',
+  degradation:  'degrade',
+  deplacement:  'degrade',
+  inaccessible: '',
+  autre:        '',
+}
 
 // ── MiniMapSig ────────────────────────────────────────────────────────────────
 
@@ -29,8 +39,9 @@ function MiniMapSig({ ok }: { ok: boolean }) {
 
 // ── SigCard ───────────────────────────────────────────────────────────────────
 
-function SigCard({ sig, onMove }: { sig: Signalement; onMove: (id: number, s: SigStatus) => void }) {
+function SigCard({ sig, onMove }: { sig: Signalement; onMove: OnMove }) {
   const { t } = useLanguage()
+  const [statutBorne, setStatutBorne] = useState<StatutBorne | ''>(STATUT_BORNE_PROPOSE[sig.type_signalement] ?? '')
   const ok = sig.statut_traitement === 'resolu'
   return (
     <div style={{ background: 'var(--bg-elevated)', border: '1px solid var(--border-subtle)', borderRadius: 'var(--radius-sm)', overflow: 'hidden', marginBottom: 8 }}>
@@ -69,8 +80,23 @@ function SigCard({ sig, onMove }: { sig: Signalement; onMove: (id: number, s: Si
           </>
         )}
         {sig.statut_traitement === 'en_verification' && (
-          <button className="btn btn-primary btn-sm" style={{ flex: 1, justifyContent: 'center', fontSize: 11 }}
-            onClick={() => onMove(sig.id, 'resolu')}>{t('admin.sig.marquer_resolu')}</button>
+          <>
+            <select
+              aria-label={t('admin.sig.statut_borne')}
+              title={t('admin.sig.statut_borne')}
+              value={statutBorne}
+              onChange={(e) => setStatutBorne(e.target.value as StatutBorne | '')}
+              style={{ fontSize: 11, height: 28, minWidth: 0, flex: 1, border: '1px solid var(--border-subtle)', borderRadius: 'var(--radius-sm)', background: 'var(--bg-sunken)', color: 'var(--fg-1)' }}
+            >
+              <option value="">{t('admin.sig.borne_inchangee')}</option>
+              <option value="actif">{t('admin.statut.actif')}</option>
+              <option value="degrade">{t('admin.statut.degrade')}</option>
+              <option value="detruit">{t('admin.statut.detruit')}</option>
+              <option value="inconnu">{t('admin.statut.inconnu')}</option>
+            </select>
+            <button className="btn btn-primary btn-sm" style={{ flex: 1, justifyContent: 'center', fontSize: 11 }}
+              onClick={() => onMove(sig.id, 'resolu', statutBorne || undefined)}>{t('admin.sig.marquer_resolu')}</button>
+          </>
         )}
         {(sig.statut_traitement === 'resolu' || sig.statut_traitement === 'rejete') && (
           <span style={{ fontSize: 11, color: 'var(--fg-3)', lineHeight: 1 }}>{t('admin.sig.traite')}</span>
@@ -95,9 +121,9 @@ export function SectionSignalements({ onToast }: { onToast: (m: string, t?: Toas
     { id: 'rejete',          label: t('admin.sig.col.rejete'),       color: 'var(--rgnc-danger)' },
   ]
 
-  const move = async (id: number, newStatus: SigStatus) => {
+  const move: OnMove = async (id, newStatus, statutBorne) => {
     try {
-      await updateMut.mutateAsync({ id, data: { statut_traitement: newStatus } })
+      await updateMut.mutateAsync({ id, data: { statut_traitement: newStatus, statut_borne: statutBorne } })
       onToast(`#${id} — ${t('admin.toast.statut_maj')}.`, 'success')
     } catch (e: any) {
       onToast(e?.response?.data?.detail || e?.response?.data?.message || t('admin.sig.erreur_maj'), 'danger')
