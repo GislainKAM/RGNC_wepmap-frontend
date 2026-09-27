@@ -127,18 +127,25 @@ export interface HistoriqueStatut {
 }
 
 // ─── Signalement ─────────────────────────────────────────────────
+// Miroir de Signalement.TypeSignalement / StatutTraitement (backend) : un
+// écart de valeur fait rejeter l'envoi ou disparaître la carte du kanban.
+export type TypeSignalement   = 'destruction' | 'degradation' | 'deplacement' | 'inaccessible' | 'autre'
+export type StatutTraitement  = 'en_attente' | 'en_verification' | 'resolu' | 'rejete'
+
 export interface Signalement {
   id:                      number
   point:                   number
   point_matricule:         string
-  type_signalement:        string
+  type_signalement:        TypeSignalement
   type_label:              string
   description:             string
   photo:                   string | null
   reporter_nom:            string | null
   date_signalement:        string
-  statut_traitement:       string
+  statut_traitement:       StatutTraitement
   statut_traitement_label: string
+  date_traitement:         string | null
+  notes_admin:             string
 }
 
 // ─── Demande d'accès ─────────────────────────────────────────────

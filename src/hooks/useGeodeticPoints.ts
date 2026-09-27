@@ -72,14 +72,20 @@ export function usePointDetail(id: number | null) {
   })
 }
 
-/** Fiche signalétique (métadonnées PDF) */
-export function useFicheSignaletique(pointId: number | null) {
+/**
+ * Fiche signalétique (métadonnées PDF). L'endpoint est réservé aux comptes
+ * connectés : ne pas l'interroger pour un visiteur anonyme.
+ */
+export function useFicheSignaletique(pointId: number | null, connecte = true) {
   return useQuery({
     queryKey:  QUERY_KEYS.fiche(pointId!),
     queryFn:   () => pointApi.fiche(pointId!),
-    enabled:   pointId !== null,
+    enabled:   pointId !== null && connecte,
     staleTime: 10 * 60 * 1000,
     gcTime:    20 * 60 * 1000,
+    // La plupart des bornes n'ont pas de fiche : un 404 est une réponse, pas
+    // une panne à réessayer trois fois.
+    retry: (n, e: any) => e?.response?.status !== 404 && n < 2,
   })
 }
 

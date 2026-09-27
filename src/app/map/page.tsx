@@ -39,6 +39,9 @@ export default function MapPage() {
 
   useEffect(() => {
     if (window.innerWidth < 768) setFiltersCollapsed(true)
+    // Lien « Partager » d'une fiche : /map?point=<id> ouvre directement la borne.
+    const pointPartage = Number(new URLSearchParams(window.location.search).get('point'))
+    if (Number.isInteger(pointPartage) && pointPartage > 0) setSelectedId(pointPartage)
   }, [])
   const [filters, setFilters]           = useState<FiltresCarteState>(DEFAULT_FILTERS)
   const { toasts, addToast, dismissToast } = useToasts()

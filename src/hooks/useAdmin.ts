@@ -99,7 +99,9 @@ export function useDeleteBornes() {
 export function useSignalements(params: { statut?: string; page?: number } = {}) {
   return useQuery({
     queryKey:  ADMIN_KEYS.signalements(params),
-    queryFn:   () => signalementApi.list({ ...params, page_size: 50 }),
+    // Le kanban répartit tout en colonnes : une page partielle fausserait
+    // les compteurs et masquerait des signalements (plafond serveur : 500).
+    queryFn:   () => signalementApi.list({ ...params, page_size: 500 }),
     staleTime: 30 * 1000,
     gcTime:    5 * 60 * 1000,
     // Polling uniquement quand la fenêtre est active (évite les requêtes en arrière-plan)

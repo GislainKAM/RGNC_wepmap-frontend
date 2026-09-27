@@ -22,10 +22,15 @@ interface AuthState {
   clearError:    () => void
 }
 
+const aUnJeton = () => typeof window !== 'undefined' && !!localStorage.getItem(JWT_ACCESS_KEY)
+
 export const useAuth = create<AuthState>((set) => ({
   user:            null,
-  isLoading:       false,
-  isAuthenticated: typeof window !== 'undefined' && !!localStorage.getItem(JWT_ACCESS_KEY),
+  // Vrai tant que le profil d'une session existante n'est pas chargé : sans
+  // cela, une page protégée ouverte directement (F5, favori) voyait
+  // user === null et redirigeait vers la connexion avant la fin de loadUser.
+  isLoading:       aUnJeton(),
+  isAuthenticated: aUnJeton(),
   error:           null,
 
   login: async (data) => {
@@ -72,13 +77,13 @@ export const useAuth = create<AuthState>((set) => ({
   },
 
   loadUser: async () => {
-    const token = typeof window !== 'undefined' && localStorage.getItem(JWT_ACCESS_KEY)
-    if (!token) return
+    if (!aUnJeton()) { set({ isLoading: false }); return }
+    set({ isLoading: true })
     try {
       const profil = await profilApi.get()
-      set({ user: profil, isAuthenticated: true })
+      set({ user: profil, isAuthenticated: true, isLoading: false })
     } catch {
-      set({ isAuthenticated: false })
+      set({ isAuthenticated: false, isLoading: false })
     }
   },
 

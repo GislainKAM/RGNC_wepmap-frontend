@@ -30,6 +30,12 @@ const apiClient: AxiosInstance = axios.create({
 
 // ── Intercepteur requête : injecter le token JWT ─────────────────
 apiClient.interceptors.request.use((config) => {
+  // Avec le Content-Type JSON par défaut, axios sérialise un FormData en JSON
+  // et les fichiers disparaissent (photos de signalement, PDF de fiche).
+  // En multipart, le navigateur pose lui-même la frontière (boundary).
+  if (typeof FormData !== 'undefined' && config.data instanceof FormData) {
+    config.headers['Content-Type'] = 'multipart/form-data'
+  }
   if (typeof window !== 'undefined') {
     const token = localStorage.getItem(JWT_ACCESS_KEY)
     if (token) {
@@ -45,12 +51,14 @@ apiClient.interceptors.response.use(
   async (error: AxiosError) => {
     const originalRequest = error.config as any
 
-    if (error.response?.status === 401 && !originalRequest._retry) {
+    // Sans jeton de rafraîchissement, le visiteur n'a jamais été connecté : un
+    // 401 signifie simplement « réservé aux comptes », pas « session expirée ».
+    // Le rediriger vers la connexion l'éjectait de la carte dès qu'il ouvrait
+    // une fiche.
+    const refreshToken = typeof window !== 'undefined' ? localStorage.getItem(JWT_REFRESH_KEY) : null
+    if (error.response?.status === 401 && !originalRequest._retry && refreshToken) {
       originalRequest._retry = true
       try {
-        const refreshToken = localStorage.getItem(JWT_REFRESH_KEY)
-        if (!refreshToken) throw new Error('No refresh token')
-
         const { data } = await axios.post<{ access: string }>(
           `${API_URL}/auth/token/refresh/`,
           { refresh: refreshToken }
@@ -189,21 +197,24 @@ export const pointApi = {
     apiClient.get<FicheSignaletique>(`/points/${id}/fiche/`).then(r => r.data),
 
   /**
-   * Télécharge le PDF de la fiche signalétique avec le token JWT.
-   * Utilise fetch() pour envoyer l'header Authorization, puis retourne
-   * une Blob URL à utiliser pour déclencher le téléchargement côté navigateur.
-   * Retourne null si l'utilisateur n'a pas les droits (401/403).
+   * Télécharge le PDF de la fiche signalétique.
+   * Passe par apiClient pour bénéficier du rafraîchissement du jeton : avec
+   * fetch(), un jeton expiré faisait échouer le téléchargement.
    */
   telecharger: async (id: number, matricule: string): Promise<void> => {
-    const token = localStorage.getItem(JWT_ACCESS_KEY)
-    const response = await fetch(`${API_URL}/points/${id}/telecharger/`, {
-      headers: token ? { Authorization: `Bearer ${token}` } : {},
-    })
-    if (!response.ok) {
-      const err = await response.json().catch(() => ({}))
-      throw new Error(err?.message ?? `Erreur ${response.status}`)
+    let blob: Blob
+    try {
+      const response = await apiClient.get<Blob>(`/points/${id}/telecharger/`, {
+        responseType: 'blob',
+        timeout: 60000,
+      })
+      blob = response.data
+    } catch (e) {
+      // En responseType blob, le corps d'erreur JSON arrive lui aussi en Blob.
+      const data = (e as AxiosError<Blob>).response?.data
+      const err  = data instanceof Blob ? await data.text().then(JSON.parse).catch(() => ({})) : {}
+      throw new Error(err?.message ?? err?.detail ?? (e as Error).message)
     }
-    const blob     = await response.blob()
     const blobUrl  = URL.createObjectURL(blob)
     const anchor   = document.createElement('a')
     anchor.href     = blobUrl
@@ -214,6 +225,19 @@ export const pointApi = {
     // Libérer la mémoire après un court délai
     setTimeout(() => URL.revokeObjectURL(blobUrl), 10_000)
   },
+
+  /** Dépôt ou remplacement du PDF de la fiche (admin) */
+  uploadFiche: (id: number, file: File): Promise<FicheSignaletique> => {
+    const form = new FormData()
+    form.append('fichier_pdf', file)
+    return apiClient
+      .post<FicheSignaletique>(`/points/${id}/fiche/`, form, { timeout: 60000 })
+      .then(r => r.data)
+  },
+
+  /** Retrait de la fiche et de son PDF (admin) */
+  deleteFiche: (id: number) =>
+    apiClient.delete(`/points/${id}/fiche/`),
 
   /** Historique des statuts */
   historique: (id: number) =>
