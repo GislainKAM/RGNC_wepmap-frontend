@@ -6,7 +6,7 @@
 
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import {
-  pointApi, signalementApi, utilisateurApi, demandeApi, importApi,
+  pointApi, signalementApi, utilisateurApi, importApi,
 } from '@/lib/api'
 import type { SignalementMaj } from '@/lib/api'
 import type {
@@ -20,7 +20,6 @@ export const ADMIN_KEYS = {
   borneDetail: (id: number)                 => ['admin', 'bornes', id],
   signalements:(p: Record<string, unknown>) => ['admin', 'signalements', p],
   users:       (p: Record<string, unknown>) => ['admin', 'users', p],
-  demandes:    (p: Record<string, unknown>) => ['admin', 'demandes', p],
 } as const
 
 // ═══════════════════════════════════════════════════════════════
@@ -162,49 +161,6 @@ export function useInviteAgent() {
   return useMutation({
     mutationFn: (data: { email: string; role: string; message?: string }) =>
       utilisateurApi.invite(data),
-  })
-}
-
-// ═══════════════════════════════════════════════════════════════
-// DEMANDES D'ACCÈS — list + approve + reject
-// ═══════════════════════════════════════════════════════════════
-
-/** Liste des demandes en attente */
-export function useDemandes(params: { statut?: string } = { statut: 'attente' }) {
-  return useQuery({
-    queryKey:  ADMIN_KEYS.demandes(params),
-    queryFn:   () => demandeApi.list(params),
-    staleTime: 30 * 1000,
-    gcTime:    5 * 60 * 1000,
-    // Polling uniquement quand la fenêtre est active
-    refetchInterval: (query) =>
-      query.state.status === 'success' && document.visibilityState === 'visible'
-        ? 2 * 60 * 1000
-        : false,
-    refetchIntervalInBackground: false,
-  })
-}
-
-/** Approuver une demande d'accès */
-export function useApproveDemande() {
-  const qc = useQueryClient()
-  return useMutation({
-    mutationFn: (id: number) => demandeApi.approve(id),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['admin', 'demandes'] })
-      qc.invalidateQueries({ queryKey: ['admin', 'users'] })
-    },
-  })
-}
-
-/** Rejeter une demande d'accès */
-export function useRejectDemande() {
-  const qc = useQueryClient()
-  return useMutation({
-    mutationFn: (id: number) => demandeApi.reject(id),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['admin', 'demandes'] })
-    },
   })
 }
 

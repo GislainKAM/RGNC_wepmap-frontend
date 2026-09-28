@@ -10,7 +10,7 @@ import type {
   PointGeodesiqueLight, PointGeodesiqueDetail, FicheSignaletique,
   HistoriqueStatut, Signalement, ProfilUtilisateur, StatsRGNC,
   GeoJSONFeatureCollection, GeoJSONFeatureCollectionPaginated,
-  PaginatedResponse, DemandeAcces, ImportResult,
+  PaginatedResponse, ImportResult,
   JWTTokens, FiltresCarteState, InscriptionFormData, ConnexionFormData,
   ZoneInteret, StatutBorne,
 } from './types'
@@ -377,26 +377,6 @@ export const utilisateurApi = {
   /** Inviter un nouvel agent par email */
   invite: (data: { email: string; role: string; message?: string }) =>
     apiClient.post('/utilisateurs/inviter/', data).then(r => r.data),
-}
-
-// ═══════════════════════════════════════════════════════════════
-// API — DEMANDES D'ACCÈS (admin)
-// ═══════════════════════════════════════════════════════════════
-
-export const demandeApi = {
-  /** Liste des demandes — filtrables par statut */
-  list: (params?: { statut?: string }) =>
-    apiClient
-      .get<PaginatedResponse<DemandeAcces>>('/demandes-acces/', { params })
-      .then(r => r.data),
-
-  /** Approuver une demande (envoie email automatique côté backend) */
-  approve: (id: number) =>
-    apiClient.post<DemandeAcces>(`/demandes-acces/${id}/approuver/`).then(r => r.data),
-
-  /** Rejeter une demande */
-  reject: (id: number) =>
-    apiClient.post<DemandeAcces>(`/demandes-acces/${id}/rejeter/`).then(r => r.data),
 }
 
 // ═══════════════════════════════════════════════════════════════

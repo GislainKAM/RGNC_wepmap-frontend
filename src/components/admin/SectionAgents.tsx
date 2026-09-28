@@ -126,7 +126,7 @@ export function SectionAgents({ onToast }: { onToast: (m: string, t?: ToastType)
                         className="btn btn-ghost btn-sm"
                         onClick={() => toggleVerif(u)}
                         disabled={updateMut.isPending}
-                        title={u.est_verifie ? t('admin.requests.rejeter') : t('admin.agents.verifie')}
+                        title={u.est_verifie ? t('admin.agents.revoquer') : t('admin.agents.verifie')}
                       >
                         <Icon name={u.est_verifie ? 'x' : 'check'} size={13} />
                       </button>

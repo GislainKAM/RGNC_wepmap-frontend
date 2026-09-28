@@ -6,7 +6,7 @@ import { Icon } from '@/components/ui/Icon'
 import { SkipLink, ANCRE_CONTENU } from '@/components/ui/SkipLink'
 import { useAuth } from '@/hooks/useAuth'
 import { useLanguage } from '@/hooks/useLanguage'
-import { useSignalements, useDemandes } from '@/hooks/useAdmin'
+import { useSignalements } from '@/hooks/useAdmin'
 import { ROUTES } from '@/lib/constants'
 
 import { useToast } from '@/components/admin/adminUtils'
@@ -15,7 +15,6 @@ import { SectionDashboard } from '@/components/admin/SectionDashboard'
 import { SectionBornes } from '@/components/admin/SectionBornes'
 import { SectionSignalements } from '@/components/admin/SectionSignalements'
 import { SectionImport } from '@/components/admin/SectionImport'
-import { SectionRequests } from '@/components/admin/SectionRequests'
 import { SectionAgents } from '@/components/admin/SectionAgents'
 import type { AdminSection } from '@/components/admin/adminUtils'
 
@@ -39,7 +38,6 @@ export default function AdminPage() {
     { key: 'bornes',       label: t('admin.nav.bornes'),       icon: 'map-pin'        },
     { key: 'signalements', label: t('admin.nav.signalements'), icon: 'triangle-alert' },
     { key: 'import',       label: t('admin.nav.import'),       icon: 'arrow-right'    },
-    { key: 'requests',     label: t('admin.nav.requests'),     icon: 'bell'           },
     { key: 'agents',       label: t('admin.nav.agents'),       icon: 'user'           },
   ]
 
@@ -48,15 +46,12 @@ export default function AdminPage() {
     bornes:       t('admin.title.bornes'),
     signalements: t('admin.title.signalements'),
     import:       t('admin.title.import'),
-    requests:     t('admin.title.requests'),
     agents:       t('admin.title.agents'),
   }
 
   // Badges dynamiques
-  const { data: sigsData }     = useSignalements()
-  const { data: demandesData } = useDemandes({ statut: 'attente' })
-  const sigBadge     = sigsData?.results?.filter((s) => s.statut_traitement === 'en_attente').length ?? 0
-  const demandeBadge = demandesData?.count ?? 0
+  const { data: sigsData } = useSignalements()
+  const sigBadge = sigsData?.results?.filter((s) => s.statut_traitement === 'en_attente').length ?? 0
 
   useEffect(() => {
     if (!isLoading && (!isAuth || user?.role !== 'admin')) {
@@ -97,7 +92,7 @@ export default function AdminPage() {
 
         <nav style={{ flex: 1, padding: '10px 8px', display: 'flex', flexDirection: 'column', gap: 2, overflowY: 'auto' }}>
           {NAV.map(({ key, label, icon }) => {
-            const badge = key === 'signalements' ? sigBadge : key === 'requests' ? demandeBadge : 0
+            const badge = key === 'signalements' ? sigBadge : 0
             return (
               <button key={key} onClick={() => { setSection(key); closeSidebar() }} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '9px 10px', borderRadius: 'var(--radius-sm)', border: 'none', cursor: 'pointer', fontSize: 13, fontFamily: 'var(--font-body)', fontWeight: 500, background: section === key ? 'rgba(255,255,255,0.12)' : 'transparent', color: section === key ? '#fff' : 'rgba(255,255,255,0.6)', textAlign: 'left', width: '100%', transition: 'all 120ms' }}>
                 <Icon name={icon as any} size={16} color={section === key ? '#fff' : 'rgba(255,255,255,0.5)'} />
@@ -153,7 +148,6 @@ export default function AdminPage() {
           {section === 'bornes'       && <SectionBornes       onToast={toast} />}
           {section === 'signalements' && <SectionSignalements onToast={toast} />}
           {section === 'import'       && <SectionImport       onToast={toast} />}
-          {section === 'requests'     && <SectionRequests     onToast={toast} />}
           {section === 'agents'       && <SectionAgents       onToast={toast} />}
         </main>
       </div>
