@@ -1,6 +1,6 @@
 'use client'
 
-import React from 'react'
+import React, { Suspense } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
@@ -20,6 +20,17 @@ const loginSchema = z.object({
 type LoginData = z.infer<typeof loginSchema>
 
 export default function LoginPage() {
+  return (
+    // useSearchParams() (pour ?next=) exige une limite Suspense : sans elle,
+    // le pré-rendu statique de Next.js échoue au build ("should be wrapped
+    // in a suspense boundary"), et /auth/login ne compile plus du tout.
+    <Suspense fallback={null}>
+      <LoginForm />
+    </Suspense>
+  )
+}
+
+function LoginForm() {
   const router       = useRouter()
   const searchParams = useSearchParams()
   const login      = useAuth((s) => s.login)
