@@ -2,6 +2,7 @@
 
 import React, { useState, useCallback, useEffect } from 'react'
 import dynamic from 'next/dynamic'
+import { useRouter } from 'next/navigation'
 import { Header } from '@/components/layout/Header'
 import { StatsStrip } from '@/components/layout/StatsStrip'
 import { FiltersPanel } from '@/components/map/FiltersPanel'
@@ -10,9 +11,15 @@ import { PointList } from '@/components/map/PointList'
 import { Toaster, useToasts } from '@/components/ui/Toast'
 import { SkipLink, ANCRE_CONTENU } from '@/components/ui/SkipLink'
 import { usePointsGeoJSON, useStatsRGNC, useZoneInteret } from '@/hooks/useGeodeticPoints'
+import { useAuth } from '@/hooks/useAuth'
 import { regionApi } from '@/lib/api'
+import { ROUTES } from '@/lib/constants'
 import type { FiltresCarteState, Region } from '@/lib/types'
 import { useQuery } from '@tanstack/react-query'
+
+/** Lien de connexion vers un point donné, pour y revenir après authentification. */
+const lienConnexionPourPoint = (id: number) =>
+  `${ROUTES.LOGIN}?next=${encodeURIComponent(`/map?point=${id}`)}`
 
 // SSR-safe MapCanvas (OpenLayers doesn't support SSR)
 const MapCanvas = dynamic(
@@ -31,6 +38,8 @@ const DEFAULT_FILTERS: FiltresCarteState = {
 }
 
 export default function MapPage() {
+  const router = useRouter()
+  const isAuth = useAuth((s) => s.isAuthenticated)
   const [view, setView]                 = useState<'map' | 'list'>('map')
   const [selectedId, setSelectedId]     = useState<number | null>(null)
   // Commence à false (identique serveur/client pour éviter l'erreur d'hydratation).
@@ -39,10 +48,18 @@ export default function MapPage() {
 
   useEffect(() => {
     if (window.innerWidth < 768) setFiltersCollapsed(true)
-    // Lien « Partager » d'une fiche : /map?point=<id> ouvre directement la borne.
-    const pointPartage = Number(new URLSearchParams(window.location.search).get('point'))
-    if (Number.isInteger(pointPartage) && pointPartage > 0) setSelectedId(pointPartage)
   }, [])
+
+  // Lien « Partager » d'une fiche : /map?point=<id>. Le détail d'un point
+  // exige un compte — sans connexion, direction la page de connexion, avec
+  // un retour automatique vers ce même point une fois authentifié.
+  useEffect(() => {
+    const pointPartage = Number(new URLSearchParams(window.location.search).get('point'))
+    if (!Number.isInteger(pointPartage) || pointPartage <= 0) return
+    if (isAuth) setSelectedId(pointPartage)
+    else router.replace(lienConnexionPourPoint(pointPartage))
+  }, [isAuth, router])
+
   const [filters, setFilters]           = useState<FiltresCarteState>(DEFAULT_FILTERS)
   const { toasts, addToast, dismissToast } = useToasts()
 
@@ -70,11 +87,9 @@ export default function MapPage() {
   }, [])
 
   const handlePickPoint = useCallback((id: number) => {
+    if (!isAuth) { router.push(lienConnexionPourPoint(id)); return }
     setSelectedId(id)
-    if (view === 'list') {
-      // stay in list; panel will open
-    }
-  }, [view])
+  }, [isAuth, router])
 
   const visibleCount = geojson?.features?.length ?? 0
 
