@@ -38,8 +38,13 @@ const jetbrainsMono = JetBrains_Mono({
 })
 
 const TITRE = 'RGNC WebMap'
+// Le détail d'une borne (coordonnées précises, fiche PDF) exige un compte
+// MINDCAF depuis la mise en place du contrôle d'accès — une description qui
+// promet ces coordonnées à quiconque clique depuis un résultat de recherche
+// dessert le site : la personne atterrit sur un écran de connexion, pas sur
+// ce qu'elle est venue chercher.
 const DESCRIPTION =
-  "Interface WebSIG pour la consultation et la gestion du Réseau Géodésique National du Cameroun (RGNC). Visualisez les bornes géodésiques, leurs coordonnées et fiches signalétiques."
+  "Carte interactive du Réseau Géodésique National du Cameroun (RGNC). Position des bornes géodésiques en accès libre ; coordonnées précises et fiches signalétiques réservées aux comptes MINDCAF."
 
 // Open Graph : sans ces balises, un lien partagé sur WhatsApp ou LinkedIn
 // n'affiche que le titre et la description, sans image. `metadataBase` est
