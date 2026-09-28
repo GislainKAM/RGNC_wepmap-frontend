@@ -148,23 +148,6 @@ export interface Signalement {
   notes_admin:             string
 }
 
-// ─── Demande d'accès ─────────────────────────────────────────────
-export interface DemandeAcces {
-  id:              number
-  utilisateur:     number | null
-  nom_complet:     string
-  email:           string
-  organisation:    string
-  fonction:        string
-  region_nom:      string
-  justification:   string
-  date_demande:    string
-  statut:          'attente' | 'approuvee' | 'rejetee'
-  traite_par_nom:  string | null
-  date_traitement: string | null
-  notes_admin:     string
-}
-
 // ─── Résultat d'import ────────────────────────────────────────────
 export interface ImportResult {
   importees: number

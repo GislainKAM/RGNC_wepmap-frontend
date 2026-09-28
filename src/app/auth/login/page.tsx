@@ -95,7 +95,7 @@ export default function LoginPage() {
               id="username"
               type="text"
               autoComplete="username"
-              placeholder="ex. a.mballa"
+              placeholder="ex. a.mballa ou j.dupont@mindcaf.cm"
               {...register('username')}
             />
             {errors.username && (

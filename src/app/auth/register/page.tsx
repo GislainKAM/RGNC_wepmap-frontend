@@ -77,20 +77,19 @@ export default function RegisterPage() {
               <Icon name="check" size={28} color="var(--rgnc-success)" strokeWidth={2.5} />
             </div>
             <h2 style={{ fontFamily: 'var(--font-display)', fontSize: 24, fontWeight: 600, margin: '0 0 8px', letterSpacing: '-0.01em' }}>
-              Demande envoyée
+              {t('register.succes.titre')}
             </h2>
             <p style={{ fontSize: 14, color: 'var(--fg-2)', lineHeight: 1.65, margin: '0 0 24px' }}>
-              Votre demande a été transmise à la <strong>Cellule SIG du MINDCAF</strong>.
-              Vous serez contacté sous 5 à 10 jours ouvrables.
+              {t('register.succes.texte')}
             </p>
             <div style={{ background: 'var(--rgnc-info-bg)', border: '1px solid #A8C8E0', borderRadius: 'var(--radius-sm)', padding: '10px 14px', marginBottom: 22, textAlign: 'left', display: 'flex', gap: 9 }}>
               <Icon name="info" size={14} color="var(--rgnc-info)" />
               <p style={{ fontSize: 12, color: '#0C3A5A', margin: 0, lineHeight: 1.6 }}>
-                En cas de besoin urgent : <strong>sig@mindcaf.cm</strong>
+                {t('register.succes.aide')}
               </p>
             </div>
             <Link href={ROUTES.LOGIN} className="btn btn-primary btn-full" style={{ height: 42, fontSize: 14 }}>
-              Retour à la connexion
+              {t('register.succes.retour')}
             </Link>
           </div>
         </div>
@@ -161,7 +160,9 @@ export default function RegisterPage() {
             <div className="field">
               <label htmlFor="username">Identifiant *</label>
               <input id="username" type="text" autoComplete="username" autoCapitalize="none" autoCorrect="off" spellCheck="false" placeholder="jean_dupont" {...register('username')} />
-              {errors.username && <span style={{ fontSize: 11, color: 'var(--rgnc-danger)', display: 'block', marginTop: 3 }}>{errors.username.message}</span>}
+              {errors.username
+                ? <span style={{ fontSize: 11, color: 'var(--rgnc-danger)', display: 'block', marginTop: 3 }}>{errors.username.message}</span>
+                : <span style={{ fontSize: 11, color: 'var(--fg-4)', display: 'block', marginTop: 3 }}>{t('register.username_hint')}</span>}
             </div>
 
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>

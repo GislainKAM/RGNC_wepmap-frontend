@@ -6,7 +6,7 @@ import type { StatutBorne } from '@/lib/types'
 
 // ── Types partagés ────────────────────────────────────────────────────────────
 
-export type AdminSection = 'dashboard' | 'bornes' | 'signalements' | 'import' | 'requests' | 'agents'
+export type AdminSection = 'dashboard' | 'bornes' | 'signalements' | 'import' | 'agents'
 export type ToastType    = 'success' | 'info' | 'warning' | 'danger'
 export interface Toast { id: number; msg: string; type: ToastType }
 
