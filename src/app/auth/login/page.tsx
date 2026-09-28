@@ -1,7 +1,7 @@
 'use client'
 
 import React from 'react'
-import { useRouter } from 'next/navigation'
+import { useRouter, useSearchParams } from 'next/navigation'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
@@ -20,7 +20,8 @@ const loginSchema = z.object({
 type LoginData = z.infer<typeof loginSchema>
 
 export default function LoginPage() {
-  const router     = useRouter()
+  const router       = useRouter()
+  const searchParams = useSearchParams()
   const login      = useAuth((s) => s.login)
   const isLoading  = useAuth((s) => s.isLoading)
   const authError  = useAuth((s) => s.error)
@@ -35,7 +36,11 @@ export default function LoginPage() {
     clearError()
     try {
       await login(data)
-      router.push(ROUTES.MAP)
+      // `next` vient d'un lien partagé/de la redirection depuis une borne :
+      // n'accepter qu'un chemin interne (jamais //hôte ou une URL absolue),
+      // pour ne pas ouvrir de redirection arbitraire.
+      const next = searchParams.get('next')
+      router.push(next && next.startsWith('/') && !next.startsWith('//') ? next : ROUTES.MAP)
     } catch {
       // error set in store
     }
